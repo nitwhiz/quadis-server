@@ -5,40 +5,48 @@ import (
 	"time"
 )
 
+var nextUpdateHandlerID = 0
+
 type UpdateHandler func()
 
 type Game struct {
-	Field          *Field
-	EventBus       *EventBus
-	Running        bool
-	UpdateHandlers []UpdateHandler
-	waitGroup      *sync.WaitGroup
+	Field           *Field
+	EventBus        *EventBus
+	Running         bool
+	updateHandlers  map[int]UpdateHandler
+	globalWaitGroup *sync.WaitGroup
 }
 
 func NewGame() *Game {
 	bus := NewEventBus()
 
 	return &Game{
-		Field:          NewField(bus, 10, 20),
-		EventBus:       bus,
-		Running:        false,
-		UpdateHandlers: []UpdateHandler{},
-		waitGroup:      &sync.WaitGroup{},
+		Field:           NewField(bus, 10, 20),
+		EventBus:        bus,
+		Running:         false,
+		updateHandlers:  map[int]UpdateHandler{},
+		globalWaitGroup: &sync.WaitGroup{},
 	}
 }
 
-func (g *Game) AddUpdateHandler(u UpdateHandler) {
-	g.UpdateHandlers = append(g.UpdateHandlers, u)
+func (g *Game) AddUpdateHandler(u UpdateHandler) int {
+	id := nextUpdateHandlerID
+
+	g.updateHandlers[id] = u
+
+	nextUpdateHandlerID++
+
+	return id
 }
 
 func (g *Game) Start() {
 	g.EventBus.Start()
 
-	g.waitGroup.Add(1)
+	g.globalWaitGroup.Add(1)
 	g.Running = true
 
 	go func() {
-		defer g.waitGroup.Done()
+		defer g.globalWaitGroup.Done()
 
 		for {
 			if !g.Running {
@@ -54,19 +62,25 @@ func (g *Game) Start() {
 
 func (g *Game) Stop() {
 	g.Running = false
-	g.waitGroup.Wait()
+	g.globalWaitGroup.Wait()
 }
 
 func (g *Game) Update() {
 	g.Field.Update()
 
-	for _, u := range g.UpdateHandlers {
-		g.waitGroup.Add(1)
+	handlerWaitGroup := &sync.WaitGroup{}
+
+	for _, u := range g.updateHandlers {
+		g.globalWaitGroup.Add(1)
+		handlerWaitGroup.Add(1)
 
 		go func(u UpdateHandler) {
-			defer g.waitGroup.Done()
+			defer g.globalWaitGroup.Done()
+			defer handlerWaitGroup.Done()
 
 			u()
 		}(u)
 	}
+
+	handlerWaitGroup.Wait()
 }

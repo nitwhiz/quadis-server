@@ -7,11 +7,14 @@ import (
 	"time"
 )
 
-const EventRowsCleared = "rows_cleared"
-const EventUpdate = "update"
-const EventGameOver = "game_over"
+const EventRowsCleared = "player_game_rows_cleared"
+const EventUpdate = "player_game_update"
+const EventPlayerJoin = "player_join"
+const EventPlayerLeave = "player_leave"
+const EventRoomInfo = "room_info"
+const EventGameOver = "player_game_over"
 
-var nextId = 0
+var nextEventID = 0
 
 type Event struct {
 	Type string                 `json:"type"`
@@ -63,11 +66,11 @@ func (e *EventBus) Stop() {
 }
 
 func (e *EventBus) AddHandler(handler EventHandler) int {
-	id := nextId
+	id := nextEventID
 
 	e.handlers[id] = handler
 
-	nextId++
+	nextEventID++
 
 	return id
 }
@@ -90,6 +93,8 @@ func (e *EventBus) Tick() {
 	e.queueMutex.Lock()
 
 	for _, event := range e.queue {
+		// todo(enhancement): drop event if it's too old
+
 		for _, handler := range e.handlers {
 			e.waitGroup.Add(1)
 
