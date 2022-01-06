@@ -55,7 +55,7 @@ func (g *Game) Start() {
 
 			g.Update()
 
-			time.Sleep(time.Millisecond * 10)
+			time.Sleep(time.Millisecond * 33)
 		}
 	}()
 }
@@ -68,19 +68,9 @@ func (g *Game) Stop() {
 func (g *Game) Update() {
 	g.Field.Update()
 
-	handlerWaitGroup := &sync.WaitGroup{}
+	// todo: refactor to spawn goroutine for every update handler
 
 	for _, u := range g.updateHandlers {
-		g.globalWaitGroup.Add(1)
-		handlerWaitGroup.Add(1)
-
-		go func(u UpdateHandler) {
-			defer g.globalWaitGroup.Done()
-			defer handlerWaitGroup.Done()
-
-			u()
-		}(u)
+		u()
 	}
-
-	handlerWaitGroup.Wait()
 }

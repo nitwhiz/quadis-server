@@ -7,12 +7,12 @@ import (
 	"time"
 )
 
-const EventRowsCleared = "player_game_rows_cleared"
-const EventUpdate = "player_game_update"
-const EventPlayerJoin = "player_join"
-const EventPlayerLeave = "player_leave"
+const EventRowsCleared = "room_player_game_rows_cleared"
+const EventFieldUpdate = "room_player_game_update"
+const EventPlayerJoin = "room_player_join"
+const EventPlayerLeave = "room_player_leave"
 const EventRoomInfo = "room_info"
-const EventGameOver = "player_game_over"
+const EventGameOver = "room_player_game_over"
 
 var nextEventID = 0
 
@@ -55,7 +55,7 @@ func (e *EventBus) Start() {
 
 			e.Tick()
 
-			time.Sleep(time.Millisecond * 10)
+			time.Sleep(time.Millisecond * 16)
 		}
 	}()
 }
@@ -93,16 +93,10 @@ func (e *EventBus) Tick() {
 	e.queueMutex.Lock()
 
 	for _, event := range e.queue {
-		// todo(enhancement): drop event if it's too old
+		// todo: refactor to spawn goroutine for every handler
 
 		for _, handler := range e.handlers {
-			e.waitGroup.Add(1)
-
-			go func(h EventHandler) {
-				defer e.waitGroup.Done()
-
-				h(event)
-			}(handler)
+			handler(event)
 		}
 	}
 

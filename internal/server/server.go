@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bloccs-server/pkg/bloccs"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -12,10 +11,6 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
 		return true
 	},
-}
-
-type Message struct {
-	Event *bloccs.Event `json:"event"`
 }
 
 type BloccsServer struct {

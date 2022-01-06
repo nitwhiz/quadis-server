@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-const Bedrock = 'X'
+const Bedrock = 'B'
 
 type FieldData []uint8
 
@@ -23,22 +23,25 @@ func (d FieldData) MarshalJSON() ([]byte, error) {
 	return []byte(result), nil
 }
 
-type fallingPiece struct {
-	piece     *Piece
-	x         int
-	y         int
-	speed     int
-	fallTimer int
+type FallingPiece struct {
+	Piece     *Piece `json:"piece"`
+	X         int    `json:"x"`
+	Y         int    `json:"y"`
+	Speed     int    `json:"speed"`
+	FallTimer int    `json:"fall_timer"`
 }
+
+// info: field has a custom json marshaller
 
 type Field struct {
 	data         FieldData
 	width        int
 	height       int
-	fallingPiece *fallingPiece
+	fallingPiece *FallingPiece
 	lastUpdate   *time.Time
 	eventBus     *EventBus
 	gameOver     bool
+	Dirty        bool
 }
 
 func NewField(bus *EventBus, w int, h int) *Field {
@@ -50,6 +53,7 @@ func NewField(bus *EventBus, w int, h int) *Field {
 		lastUpdate:   nil,
 		eventBus:     bus,
 		gameOver:     false,
+		Dirty:        true,
 	}
 }
 
@@ -61,39 +65,20 @@ func (f *Field) Update() {
 	now := time.Now()
 
 	if f.lastUpdate != nil {
+		f.Dirty = false
+
 		delta := now.Sub(*f.lastUpdate)
 
 		if f.fallingPiece == nil {
 			f.SetFallingPiece(GetRandomPiece())
 		} else {
-			f.fallingPiece.fallTimer -= int(delta / time.Millisecond)
+			f.fallingPiece.FallTimer -= int(delta / time.Millisecond)
 
-			if f.fallingPiece.fallTimer <= 0 {
-				f.fallingPiece.fallTimer = 1000 / f.fallingPiece.speed
+			if f.fallingPiece.FallTimer <= 0 {
+				f.fallingPiece.FallTimer = 1000 / f.fallingPiece.Speed
 
 				if m := f.MoveFallingPiece(0, 1, 0); !m {
 					f.LockFallingPiece()
-
-					cleared := f.ClearFullRows()
-
-					if cleared != 0 {
-						f.eventBus.Publish(&Event{
-							Type: EventRowsCleared,
-							Data: map[string]interface{}{
-								"count": cleared,
-							},
-						})
-					}
-
-					f.SetFallingPiece(GetRandomPiece())
-
-					if nm := f.CanMoveFallingPiece(0, 1, 0); !nm {
-						f.eventBus.Publish(&Event{
-							Type: EventGameOver,
-						})
-
-						f.gameOver = true
-					}
 				}
 			}
 		}
@@ -122,30 +107,55 @@ func (f *Field) GetCenterX() int {
 
 func (f *Field) PutPiece(p *Piece, x int, y int) {
 	putPieceToSlice(f.data, f.width, p, x, y)
+
+	f.Dirty = true
 }
 
 func (f *Field) SetFallingPiece(p *Piece) {
+	f.Dirty = true
+
 	if p == nil {
 		f.fallingPiece = nil
 
 		return
 	}
 
-	f.fallingPiece = &fallingPiece{
-		piece:     p,
-		x:         f.GetCenterX(),
-		y:         0,
-		speed:     1,
-		fallTimer: 1000,
+	f.fallingPiece = &FallingPiece{
+		Piece:     p,
+		X:         f.GetCenterX(),
+		Y:         0,
+		Speed:     1,
+		FallTimer: 1000,
 	}
 }
 
 func (f *Field) LockFallingPiece() {
 	if f.fallingPiece != nil {
-		f.PutPiece(f.fallingPiece.piece, f.fallingPiece.x, f.fallingPiece.y)
+		f.PutPiece(f.fallingPiece.Piece, f.fallingPiece.X, f.fallingPiece.Y)
 	}
 
 	f.fallingPiece = nil
+
+	cleared := f.ClearFullRows()
+
+	if cleared != 0 {
+		f.eventBus.Publish(&Event{
+			Type: EventRowsCleared,
+			Data: map[string]interface{}{
+				"count": cleared,
+			},
+		})
+	}
+
+	f.SetFallingPiece(GetRandomPiece())
+
+	if nm := f.CanMoveFallingPiece(0, 1, 0); !nm {
+		f.eventBus.Publish(&Event{
+			Type: EventGameOver,
+		})
+
+		f.gameOver = true
+	}
 }
 
 func (f *Field) isInBounds(x int, y int) bool {
@@ -176,23 +186,39 @@ func (f *Field) CanMoveFallingPiece(dx int, dy int, dr int) bool {
 		return false
 	}
 
-	tp := f.fallingPiece.piece.Clone()
+	tp := f.fallingPiece.Piece.Clone()
 
 	for ; dr > 0; dr-- {
 		tp.Rotate()
 	}
 
-	return f.canPutPiece(tp, f.fallingPiece.x+dx, f.fallingPiece.y+dy)
+	return f.canPutPiece(tp, f.fallingPiece.X+dx, f.fallingPiece.Y+dy)
+}
+
+func (f *Field) PunchFallingPiece() {
+	if f.fallingPiece == nil {
+		return
+	}
+
+	for {
+		if m := f.MoveFallingPiece(0, 1, 0); !m {
+			break
+		}
+	}
+
+	f.LockFallingPiece()
 }
 
 func (f *Field) MoveFallingPiece(dx int, dy int, dr int) bool {
 	if f.fallingPiece != nil && f.CanMoveFallingPiece(dx, dy, dr) {
-		f.fallingPiece.x += dx
-		f.fallingPiece.y += dy
+		f.fallingPiece.X += dx
+		f.fallingPiece.Y += dy
 
 		for ; dr > 0; dr-- {
-			f.fallingPiece.piece.Rotate()
+			f.fallingPiece.Piece.Rotate()
 		}
+
+		f.Dirty = true
 
 		return true
 	}
@@ -240,6 +266,10 @@ func (f *Field) ClearFullRows() int {
 		}
 	}
 
+	if cleared > 0 {
+		f.Dirty = true
+	}
+
 	return cleared
 }
 
@@ -257,14 +287,13 @@ func (f *Field) GetData() FieldData {
 	buf = append(buf, f.data...)
 
 	if f.fallingPiece != nil {
-		putPieceToSlice(buf, f.width, f.fallingPiece.piece, f.fallingPiece.x, f.fallingPiece.y)
+		putPieceToSlice(buf, f.width, f.fallingPiece.Piece, f.fallingPiece.X, f.fallingPiece.Y)
 	}
 
 	return buf
 }
 
 func (f *Field) MarshalJSON() ([]byte, error) {
-	// todo: cache this?
 	d := map[string]interface{}{
 		"data":   f.GetData(),
 		"width":  f.width,

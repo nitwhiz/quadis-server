@@ -13,7 +13,7 @@ import (
 type Player struct {
 	ID        string          `json:"id"`
 	Name      string          `json:"name"`
-	CreateAt  int64           `json:"join_time"`
+	CreateAt  int64           `json:"create_at"`
 	Game      *bloccs.Game    `json:"-"`
 	ConnMutex *sync.Mutex     `json:"-"`
 	Conn      *websocket.Conn `json:"-"`
@@ -43,12 +43,11 @@ func (p *Player) SendMessage(data []byte) error {
 }
 
 func (p *Player) sendFieldUpdate() {
-	bs, err := json.Marshal(Message{
-		Event: &bloccs.Event{
-			Type: bloccs.EventUpdate,
-			Data: map[string]interface{}{
-				"field": p.Game.Field,
-			},
+	bs, err := json.Marshal(&bloccs.Event{
+		Type: bloccs.EventFieldUpdate,
+		Data: map[string]interface{}{
+			"player": p,
+			"field":  p.Game.Field,
 		},
 	})
 
@@ -79,7 +78,7 @@ func (p *Player) Listen() {
 
 			p.sendFieldUpdate()
 		} else if string(message) == "D" {
-			p.Game.Field.MoveFallingPiece(0, 1, 0)
+			p.Game.Field.PunchFallingPiece()
 
 			p.sendFieldUpdate()
 		} else if string(message) == "X" {

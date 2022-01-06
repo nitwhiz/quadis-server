@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"github.com/google/uuid"
 	"log"
+	"sync"
 )
 
 type Room struct {
 	ID             string             `json:"id"`
 	Players        map[string]*Player `json:"players"`
+	playersMutex   *sync.Mutex
 	eventHandlers  map[string][]int
 	updateHandlers map[string][]int
 }
@@ -18,6 +20,7 @@ func NewRoom() *Room {
 	return &Room{
 		ID:             uuid.NewString(),
 		Players:        map[string]*Player{},
+		playersMutex:   &sync.Mutex{},
 		eventHandlers:  map[string][]int{},
 		updateHandlers: map[string][]int{},
 	}
@@ -25,9 +28,7 @@ func NewRoom() *Room {
 
 func getEventHandler(p *Player) bloccs.EventHandler {
 	return func(event *bloccs.Event) {
-		bs, err := json.Marshal(Message{
-			Event: event,
-		})
+		bs, err := json.Marshal(event)
 
 		if err != nil {
 			log.Println("json failed:", err)
@@ -40,15 +41,41 @@ func getEventHandler(p *Player) bloccs.EventHandler {
 }
 
 func (r *Room) applyUpdateHandlers(p *Player) {
+	// send p's events to p
+	p.Game.AddUpdateHandler(func() {
+		if !p.Game.Field.Dirty {
+			return
+		}
+
+		bs, err := json.Marshal(&bloccs.Event{
+			Type: bloccs.EventFieldUpdate,
+			Data: map[string]interface{}{
+				"player": p,
+				"field":  p.Game.Field,
+			},
+		})
+
+		if err != nil {
+			log.Println("json failed:", err)
+		}
+
+		if err = p.SendMessage(bs); err != nil {
+			log.Println("send failed:", err)
+		}
+	})
+
 	for _, player := range r.Players {
 		// send other player's events to p
 		player.Game.AddUpdateHandler(func() {
-			bs, err := json.Marshal(Message{
-				Event: &bloccs.Event{
-					Type: bloccs.EventUpdate,
-					Data: map[string]interface{}{
-						"field": player.Game.Field,
-					},
+			if !player.Game.Field.Dirty {
+				return
+			}
+
+			bs, err := json.Marshal(&bloccs.Event{
+				Type: bloccs.EventFieldUpdate,
+				Data: map[string]interface{}{
+					"player": player,
+					"field":  player.Game.Field,
 				},
 			})
 
@@ -63,12 +90,15 @@ func (r *Room) applyUpdateHandlers(p *Player) {
 
 		// send p's updates to other players
 		p.Game.AddUpdateHandler(func() {
-			bs, err := json.Marshal(Message{
-				Event: &bloccs.Event{
-					Type: bloccs.EventUpdate,
-					Data: map[string]interface{}{
-						"field": player.Game.Field,
-					},
+			if !p.Game.Field.Dirty {
+				return
+			}
+
+			bs, err := json.Marshal(&bloccs.Event{
+				Type: bloccs.EventFieldUpdate,
+				Data: map[string]interface{}{
+					"player": p,
+					"field":  p.Game.Field,
 				},
 			})
 
@@ -80,7 +110,6 @@ func (r *Room) applyUpdateHandlers(p *Player) {
 				log.Println("send failed:", err)
 			}
 		})
-
 	}
 }
 
@@ -98,16 +127,16 @@ func (r *Room) applyEventHandlers(p *Player) {
 }
 
 func (r *Room) AddPlayer(p *Player) {
+	r.playersMutex.Lock()
+
 	if _, ok := r.Players[p.ID]; ok {
 		return
 	}
 
-	r.BroadcastMessage(&Message{
-		Event: &bloccs.Event{
-			Type: bloccs.EventPlayerJoin,
-			Data: map[string]interface{}{
-				"player": p,
-			},
+	r.BroadcastEvent(&bloccs.Event{
+		Type: bloccs.EventPlayerJoin,
+		Data: map[string]interface{}{
+			"player": p,
 		},
 	})
 
@@ -116,12 +145,15 @@ func (r *Room) AddPlayer(p *Player) {
 
 	r.Players[p.ID] = p
 
-	bs, _ := json.Marshal(&Message{
-		Event: &bloccs.Event{
-			Type: bloccs.EventRoomInfo,
-			Data: map[string]interface{}{
-				"room": r,
-			},
+	r.playersMutex.Unlock()
+
+	// todo: this is a concurrent read of players
+	// todo: refactor mutex use in this project
+
+	bs, _ := json.Marshal(&bloccs.Event{
+		Type: bloccs.EventRoomInfo,
+		Data: map[string]interface{}{
+			"room": r,
 		},
 	})
 
@@ -129,6 +161,8 @@ func (r *Room) AddPlayer(p *Player) {
 }
 
 func (r *Room) RemovePlayer(p *Player) {
+	r.playersMutex.Lock()
+
 	if _, ok := r.Players[p.ID]; !ok {
 		return
 	}
@@ -139,18 +173,18 @@ func (r *Room) RemovePlayer(p *Player) {
 
 	delete(r.Players, p.ID)
 
-	r.BroadcastMessage(&Message{
-		Event: &bloccs.Event{
-			Type: bloccs.EventPlayerLeave,
-			Data: map[string]interface{}{
-				"player": p,
-			},
+	r.BroadcastEvent(&bloccs.Event{
+		Type: bloccs.EventPlayerLeave,
+		Data: map[string]interface{}{
+			"player": p,
 		},
 	})
+
+	r.playersMutex.Unlock()
 }
 
-func (r *Room) BroadcastMessage(msg *Message) {
-	bs, err := json.Marshal(msg)
+func (r *Room) BroadcastEvent(event *bloccs.Event) {
+	bs, err := json.Marshal(event)
 
 	if err != nil {
 		log.Printf("error in json for broadcast: %s\n", err.Error())
@@ -165,17 +199,25 @@ func (r *Room) BroadcastMessage(msg *Message) {
 }
 
 func (r *Room) Start() {
+	r.playersMutex.Lock()
+
 	for _, p := range r.Players {
 		if p.Game != nil {
 			p.Game.Start()
 		}
 	}
+
+	r.playersMutex.Unlock()
 }
 
 func (r *Room) Stop() {
+	r.playersMutex.Lock()
+
 	for _, p := range r.Players {
 		if p.Game != nil {
 			p.Game.Stop()
 		}
 	}
+
+	r.playersMutex.Unlock()
 }
