@@ -13,7 +13,7 @@ const ChanExprAll = ".*"
 type Handler func(event *Event)
 
 type Bus struct {
-	handlers          map[string][]Handler
+	handlers          map[string]map[interface{}][]Handler
 	handlersMutex     *sync.Mutex
 	running           bool
 	waitGroup         *sync.WaitGroup
@@ -27,7 +27,7 @@ type Bus struct {
 
 func NewBus() *Bus {
 	return &Bus{
-		handlers:          map[string][]Handler{},
+		handlers:          map[string]map[interface{}][]Handler{},
 		handlersMutex:     &sync.Mutex{},
 		running:           true,
 		waitGroup:         &sync.WaitGroup{},
@@ -92,8 +92,10 @@ func (b *Bus) startChannelListener(n string, c chan *Event) {
 						rex := b.exprToRex[expr]
 
 						if rex.MatchString(n) {
-							for _, h := range handlers {
-								h(event)
+							for _, sources := range handlers {
+								for _, h := range sources {
+									h(event)
+								}
 							}
 						}
 					}
@@ -114,7 +116,7 @@ func (b *Bus) Stop() {
 	b.waitGroup.Wait()
 }
 
-func (b *Bus) Subscribe(channelExpr string, handler Handler) {
+func (b *Bus) Subscribe(channelExpr string, handler Handler, source interface{}) {
 	if _, ok := b.exprToRex[channelExpr]; !ok {
 		rex, _ := regexp.Compile(channelExpr)
 
@@ -124,12 +126,31 @@ func (b *Bus) Subscribe(channelExpr string, handler Handler) {
 	b.handlersMutex.Lock()
 
 	if _, ok := b.handlers[channelExpr]; !ok {
-		b.handlers[channelExpr] = []Handler{}
+		b.handlers[channelExpr] = map[interface{}][]Handler{}
 	}
 
-	b.handlers[channelExpr] = append(b.handlers[channelExpr], handler)
+	if _, ok := b.handlers[channelExpr][source]; !ok {
+		b.handlers[channelExpr][source] = []Handler{}
+	}
+
+	b.handlers[channelExpr][source] = append(b.handlers[channelExpr][source], handler)
 
 	b.handlersMutex.Unlock()
+}
+
+func (b *Bus) Unsubscribe(source interface{}) {
+	// todo: fix locking - just exits here
+	//b.handlersMutex.Lock()
+
+	for expr, sources := range b.handlers {
+		for src := range sources {
+			if src == source {
+				delete(b.handlers[expr], src)
+			}
+		}
+	}
+
+	//b.handlersMutex.Unlock()
 }
 
 func (b *Bus) Publish(event *Event) {

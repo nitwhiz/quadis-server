@@ -13,6 +13,7 @@ type Room struct {
 	ID            string             `json:"id"`
 	Players       map[string]*Player `json:"players"`
 	games         map[string]*bloccs.Game
+	gamesMutex    *sync.Mutex
 	eventBus      *event.Bus
 	playersMutex  *sync.Mutex
 	roomWaitGroup *sync.WaitGroup
@@ -23,6 +24,7 @@ func NewRoom() *Room {
 		ID:            uuid.NewString(),
 		Players:       map[string]*Player{},
 		games:         map[string]*bloccs.Game{},
+		gamesMutex:    &sync.Mutex{},
 		eventBus:      event.NewBus(),
 		playersMutex:  &sync.Mutex{},
 		roomWaitGroup: &sync.WaitGroup{},
@@ -63,15 +65,18 @@ func (r *Room) AddPlayer(p *Player) {
 		if err := passEvent(p, e); err != nil {
 			r.RemovePlayer(p)
 		}
-	})
+	}, g)
 
 	r.eventBus.Subscribe(fmt.Sprintf("player/%s", p.ID), func(e *event.Event) {
 		if err := passEvent(p, e); err != nil {
 			r.RemovePlayer(p)
 		}
-	})
+	}, g)
 
+	r.gamesMutex.Lock()
 	r.games[p.ID] = g
+	r.gamesMutex.Unlock()
+
 	r.Players[p.ID] = p
 
 	r.playersMutex.Unlock()
@@ -87,23 +92,32 @@ func (r *Room) AddPlayer(p *Player) {
 }
 
 func (r *Room) RemovePlayer(p *Player) {
+	// todo: player removal does not work, join & leave events are sent to new players
+
+	r.playersMutex.Lock()
+
 	defer func() {
 		_ = p.Conn.Close()
 		r.playersMutex.Unlock()
 	}()
 
-	r.playersMutex.Lock()
-
 	if _, ok := r.Players[p.ID]; !ok {
 		return
 	}
 
+	r.gamesMutex.Lock()
+
+	r.eventBus.Unsubscribe(r.games[p.ID])
+
 	if g, ok := r.games[p.ID]; ok {
 		g.Stop()
-		// todo: game mutex: delete(r.games, p.ID)
+		delete(r.games, p.ID)
 	}
 
+	r.gamesMutex.Unlock()
+
 	r.eventBus.RemoveChannel(fmt.Sprintf("player/%s", p.ID))
+
 	delete(r.Players, p.ID)
 
 	r.eventBus.Publish(event.New(event.ChanBroadcast, bloccs.EventPlayerLeave, &event.Payload{
@@ -112,12 +126,13 @@ func (r *Room) RemovePlayer(p *Player) {
 }
 
 func (r *Room) Start() {
-	// todo: game mutex
-	// todo: don't allow join after start
+	r.gamesMutex.Lock()
 
 	for _, g := range r.games {
 		g.Start()
 	}
+
+	r.gamesMutex.Unlock()
 
 	r.playersMutex.Lock()
 
@@ -136,6 +151,8 @@ func (r *Room) Start() {
 					return
 				}
 
+				r.gamesMutex.Lock()
+
 				if _, ok := r.games[p.ID]; ok {
 					if r.games[p.ID].Command(string(msg)) {
 						if r.games[p.ID].Field.FallingPiece.Dirty {
@@ -147,6 +164,8 @@ func (r *Room) Start() {
 						}
 					}
 				}
+
+				r.gamesMutex.Unlock()
 			}
 		}(player)
 	}
@@ -155,9 +174,12 @@ func (r *Room) Start() {
 }
 
 func (r *Room) Stop() {
+	r.gamesMutex.Lock()
+
 	for _, g := range r.games {
 		g.Stop()
 	}
+	r.gamesMutex.Unlock()
 
 	r.roomWaitGroup.Wait()
 }
