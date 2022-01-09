@@ -13,38 +13,62 @@ const ChanExprAll = ".*"
 type Handler func(event *Event)
 
 type Bus struct {
-	handlers      map[string][]Handler
-	handlersMutex *sync.Mutex
-	running       bool
-	waitGroup     *sync.WaitGroup
-	exprToRex     map[string]*regexp.Regexp
-	channels      map[string]chan *Event
-	stopChannel   chan bool
+	handlers          map[string][]Handler
+	handlersMutex     *sync.Mutex
+	running           bool
+	waitGroup         *sync.WaitGroup
+	exprToRex         map[string]*regexp.Regexp
+	channels          map[string]chan *Event
+	channelsMutex     *sync.Mutex
+	stopChannels      map[string]chan bool
+	stopChannelsMutex *sync.Mutex
+	mainStopChannel   chan bool
 }
 
 func NewBus() *Bus {
 	return &Bus{
-		handlers:      map[string][]Handler{},
-		handlersMutex: &sync.Mutex{},
-		running:       true,
-		waitGroup:     &sync.WaitGroup{},
-		exprToRex:     map[string]*regexp.Regexp{},
-		channels:      map[string]chan *Event{},
-		stopChannel:   make(chan bool),
+		handlers:          map[string][]Handler{},
+		handlersMutex:     &sync.Mutex{},
+		running:           true,
+		waitGroup:         &sync.WaitGroup{},
+		exprToRex:         map[string]*regexp.Regexp{},
+		channels:          map[string]chan *Event{},
+		channelsMutex:     &sync.Mutex{},
+		stopChannels:      map[string]chan bool{},
+		stopChannelsMutex: &sync.Mutex{},
+		mainStopChannel:   make(chan bool),
 	}
 }
 
 func (b *Bus) AddChannel(name string) {
 	c := make(chan *Event)
 
+	b.channelsMutex.Lock()
 	b.channels[name] = c
+	b.channelsMutex.Unlock()
+
+	b.stopChannelsMutex.Lock()
+	b.stopChannels[name] = make(chan bool)
+	b.stopChannelsMutex.Unlock()
 
 	b.startChannelListener(name, c)
 }
 
+func (b *Bus) RemoveChannel(name string) {
+	b.channelsMutex.Lock()
+	delete(b.channels, name)
+	b.channelsMutex.Unlock()
+
+	b.stopChannelsMutex.Lock()
+	b.stopChannels[name] <- true
+	delete(b.stopChannels, name)
+	b.stopChannelsMutex.Unlock()
+}
+
 func (b *Bus) startChannelListener(n string, c chan *Event) {
-	go func() {
+	go func(stopChannel chan bool) {
 		defer b.waitGroup.Done()
+
 		b.waitGroup.Add(1)
 
 		for {
@@ -53,7 +77,9 @@ func (b *Bus) startChannelListener(n string, c chan *Event) {
 			}
 
 			select {
-			case <-b.stopChannel:
+			case <-stopChannel:
+				return
+			case <-b.mainStopChannel:
 				return
 			case event := <-c:
 				go func() {
@@ -80,11 +106,11 @@ func (b *Bus) startChannelListener(n string, c chan *Event) {
 				break
 			}
 		}
-	}()
+	}(b.stopChannels[n])
 }
 
 func (b *Bus) Stop() {
-	close(b.stopChannel)
+	close(b.mainStopChannel)
 	b.waitGroup.Wait()
 }
 

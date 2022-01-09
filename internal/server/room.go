@@ -34,11 +34,10 @@ func passEvent(p *Player, e *event.Event) error {
 
 	if err != nil {
 		log.Printf("cannot get bytes of message")
-		return nil
+		return err
 	}
 
 	if err := p.SendMessage(bs); err != nil {
-		log.Printf("cannot send message")
 		return err
 	}
 
@@ -60,14 +59,16 @@ func (r *Room) AddPlayer(p *Player) {
 
 	r.eventBus.AddChannel(fmt.Sprintf("player/%s", p.ID))
 
-	// todo: fix ghost players
-
 	r.eventBus.Subscribe("game_update/.*", func(e *event.Event) {
-		_ = passEvent(p, e)
+		if err := passEvent(p, e); err != nil {
+			r.RemovePlayer(p)
+		}
 	})
 
 	r.eventBus.Subscribe(fmt.Sprintf("player/%s", p.ID), func(e *event.Event) {
-		_ = passEvent(p, e)
+		if err := passEvent(p, e); err != nil {
+			r.RemovePlayer(p)
+		}
 	})
 
 	r.games[p.ID] = g
@@ -86,6 +87,11 @@ func (r *Room) AddPlayer(p *Player) {
 }
 
 func (r *Room) RemovePlayer(p *Player) {
+	defer func() {
+		_ = p.Conn.Close()
+		r.playersMutex.Unlock()
+	}()
+
 	r.playersMutex.Lock()
 
 	if _, ok := r.Players[p.ID]; !ok {
@@ -94,13 +100,11 @@ func (r *Room) RemovePlayer(p *Player) {
 
 	if g, ok := r.games[p.ID]; ok {
 		g.Stop()
+		// todo: game mutex: delete(r.games, p.ID)
 	}
 
-	// todo: remove channels from event bus
-
+	r.eventBus.RemoveChannel(fmt.Sprintf("player/%s", p.ID))
 	delete(r.Players, p.ID)
-
-	r.playersMutex.Unlock()
 
 	r.eventBus.Publish(event.New(event.ChanBroadcast, bloccs.EventPlayerLeave, &event.Payload{
 		"player": p,

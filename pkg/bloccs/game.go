@@ -58,6 +58,8 @@ func (g *Game) Start() {
 func (g *Game) Stop() {
 	close(g.stopChannel)
 	g.globalWaitGroup.Wait()
+
+	g.EventBus.RemoveChannel(fmt.Sprintf("game_update/%s", g.ID))
 }
 
 // todo: should actually be in field
