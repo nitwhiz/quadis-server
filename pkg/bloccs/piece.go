@@ -10,9 +10,12 @@ var rng = rand.New(rand.NewSource(time.Now().UnixMilli()))
 const PieceBufWidth = 4
 
 type Piece struct {
-	rotationStates *[][]uint8
-	rotation       int
+	Name           uint8 `json:"name"`
+	Rotation       int   `json:"rotation"`
+	rotationStates *[]FieldData
 }
+
+// todo: better piece permutation
 
 func GetRandomPiece() *Piece {
 	return Pieces[rng.Intn(len(Pieces))].Clone()
@@ -24,23 +27,24 @@ func (p *Piece) Clone() *Piece {
 }
 
 func (p *Piece) Rotate() {
-	p.rotation++
+	p.Rotation++
 
-	if p.rotation >= len(*p.rotationStates) {
-		p.rotation = 0
+	if p.Rotation >= len(*p.rotationStates) {
+		p.Rotation = 0
 	}
 }
 
-func (p *Piece) GetData() *[]uint8 {
-	return &((*p.rotationStates)[p.rotation])
+func (p *Piece) GetData() *FieldData {
+	return &((*p.rotationStates)[p.Rotation])
 }
 
 func (p *Piece) GetDataXY(x int, y int) uint8 {
-	return (*p.rotationStates)[p.rotation][y*PieceBufWidth+x]
+	return (*p.rotationStates)[p.Rotation][y*PieceBufWidth+x]
 }
 
 var PieceI = Piece{
-	rotationStates: &[][]uint8{
+	Name: 'I',
+	rotationStates: &[]FieldData{
 		{
 			0, 0, 0, 0,
 			0, 0, 0, 0,
@@ -57,7 +61,8 @@ var PieceI = Piece{
 }
 
 var PieceO = Piece{
-	rotationStates: &[][]uint8{
+	Name: 'O',
+	rotationStates: &[]FieldData{
 		{
 			0, 0, 0, 0,
 			0, 'O', 'O', 0,
@@ -68,7 +73,8 @@ var PieceO = Piece{
 }
 
 var PieceL = Piece{
-	rotationStates: &[][]uint8{
+	Name: 'L',
+	rotationStates: &[]FieldData{
 		{
 			0, 0, 0, 0,
 			'L', 'L', 'L', 0,
@@ -97,7 +103,8 @@ var PieceL = Piece{
 }
 
 var PieceJ = Piece{
-	rotationStates: &[][]uint8{
+	Name: 'J',
+	rotationStates: &[]FieldData{
 		{
 			0, 0, 0, 0,
 			'J', 'J', 'J', 0,
@@ -126,7 +133,8 @@ var PieceJ = Piece{
 }
 
 var PieceS = Piece{
-	rotationStates: &[][]uint8{
+	Name: 'S',
+	rotationStates: &[]FieldData{
 		{
 			0, 0, 0, 0,
 			0, 'S', 'S', 0,
@@ -155,7 +163,8 @@ var PieceS = Piece{
 }
 
 var PieceT = Piece{
-	rotationStates: &[][]uint8{
+	Name: 'T',
+	rotationStates: &[]FieldData{
 		{
 			0, 0, 0, 0,
 			'T', 'T', 'T', 0,
@@ -184,7 +193,8 @@ var PieceT = Piece{
 }
 
 var PieceZ = Piece{
-	rotationStates: &[][]uint8{
+	Name: 'Z',
+	rotationStates: &[]FieldData{
 		{
 			0, 0, 0, 0,
 			'Z', 'Z', 0, 0,

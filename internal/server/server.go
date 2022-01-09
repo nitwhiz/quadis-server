@@ -41,26 +41,16 @@ func (s *BloccsServer) GetRoom(id string) *Room {
 	return nil
 }
 
-func (s *BloccsServer) connect(room *Room, w http.ResponseWriter, r *http.Request) error {
+func (s *BloccsServer) connect(playerName string, room *Room, w http.ResponseWriter, r *http.Request) error {
 	conn, err := upgrader.Upgrade(w, r, nil)
 
 	if err != nil {
 		return err
 	}
 
-	defer func(conn *websocket.Conn) {
-		_ = conn.Close()
-	}(conn)
-
-	// players have games. rooms have players. rooms control start/stop/game_over
-
-	player := NewPlayer("test", conn)
-
-	defer room.RemovePlayer(player)
+	player := NewPlayer(playerName, conn)
 
 	room.AddPlayer(player)
-
-	player.Listen()
 
 	return nil
 }
@@ -100,6 +90,8 @@ func (s *BloccsServer) startHTTPServer() error {
 		}
 
 		room.Start()
+
+		c.Status(http.StatusNoContent)
 	})
 
 	r.GET("/rooms/:roomId/socket", func(c *gin.Context) {
@@ -123,7 +115,9 @@ func (s *BloccsServer) startHTTPServer() error {
 			return
 		}
 
-		if err := s.connect(room, c.Writer, c.Request); err != nil {
+		playerName := "test"
+
+		if err := s.connect(playerName, room, c.Writer, c.Request); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error": "unable to connect: " + err.Error(),
 			})

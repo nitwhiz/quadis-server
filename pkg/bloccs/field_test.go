@@ -1,12 +1,15 @@
 package bloccs
 
 import (
+	"bloccs-server/pkg/event"
 	"fmt"
 	"testing"
 )
 
 func TestField_PutPiece(t *testing.T) {
-	field := NewField(6, 6)
+	bus := event.NewBus()
+
+	field := NewField(bus, 6, 6, "test")
 
 	piece := PieceT.Clone()
 
@@ -21,16 +24,20 @@ func TestField_PutPiece(t *testing.T) {
 		0, 0, 0, 0, 0, 0,
 	}
 
-	fmt.Println(field.data)
+	fmt.Println(field.Data)
 	fmt.Println(expectedData)
 
 	for x := 0; x < 6; x++ {
 		for y := 0; y < 6; y++ {
 			i := y*6 + x
 
-			if field.data[i] != expectedData[i] {
+			if field.Data[i] != expectedData[i] {
 				t.Fatalf("rotationStates not equal at %d;%d", x, y)
 			}
 		}
 	}
+
+	bus.Stop()
+
+	// todo: test event bus output
 }
