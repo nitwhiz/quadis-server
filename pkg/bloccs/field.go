@@ -47,8 +47,6 @@ func (f *Field) Update() (bool, bool) {
 		now := time.Now()
 
 		if f.lastUpdate != nil {
-			f.Dirty = false
-
 			delta := now.Sub(*f.lastUpdate)
 
 			if keepGoing := f.FallingPiece.Update(f, int(delta)); !keepGoing {
@@ -123,6 +121,7 @@ func (f *Field) SetBedrock(h int) {
 		}
 	}
 
+	f.Dirty = true
 	f.bedrockHeight = h
 }
 
@@ -179,6 +178,7 @@ func (f *Field) ClearFullRows() int {
 	}
 
 	if cleared > 0 {
+		f.DecreaseBedrock(cleared)
 		f.Dirty = true
 	}
 

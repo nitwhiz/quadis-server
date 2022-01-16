@@ -39,7 +39,8 @@ func (g *Game) Start() {
 	go func() {
 		defer g.globalWaitGroup.Done()
 
-		ticker := time.NewTicker(time.Millisecond * 16)
+		// 100 fps
+		ticker := time.NewTicker(time.Millisecond * 10)
 
 		defer ticker.Stop()
 
@@ -85,6 +86,9 @@ func (g *Game) Update() {
 
 	if dirty {
 		g.PublishFieldUpdate()
+
+		// todo: g.Field should not be manipulated from here; maintain dirty flags from outside?; diffing?
+		g.Field.Dirty = false
 	}
 
 	if gameOver {
@@ -94,10 +98,10 @@ func (g *Game) Update() {
 	g.Over = gameOver
 }
 
-// todo: refactor command no not query g.Field twice
-
 // Command returns true if the command was understood
 func (g *Game) Command(cmd string) bool {
+	// todo: refactor command no not query g.Field twice
+
 	switch cmd {
 	case "L":
 		g.Field.FallingPiece.Move(g.Field, -1, 0, 0)
