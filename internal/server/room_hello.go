@@ -43,6 +43,7 @@ func (r *Room) Join(conn *websocket.Conn) error {
 			case <-pingTicker.C:
 				_ = conn.SetWriteDeadline(time.Now().Add(time.Second * 10))
 
+				// todo: ping is a concurrent write to Player.SendMessage sometimes
 				if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 					return
 				}

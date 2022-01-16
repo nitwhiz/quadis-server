@@ -7,16 +7,17 @@ import (
 )
 
 type Field struct {
-	ID            string            `json:"id"`
-	Data          FieldData         `json:"data"`
-	Width         int               `json:"width"`
-	Height        int               `json:"height"`
-	FallingPiece  *FallingPieceData `json:"falling_piece"`
-	GameOver      bool              `json:"game_over"`
-	Dirty         bool
-	bedrockHeight int
-	lastUpdate    *time.Time
-	eventBus      *event.Bus
+	ID               string            `json:"id"`
+	Data             FieldData         `json:"data"`
+	Width            int               `json:"width"`
+	Height           int               `json:"height"`
+	FallingPiece     *FallingPieceData `json:"falling_piece"`
+	GameOver         bool              `json:"game_over"`
+	Dirty            bool
+	currentBedrock   int
+	requestedBedrock int
+	lastUpdate       *time.Time
+	eventBus         *event.Bus
 }
 
 func NewField(bus *event.Bus, w int, h int, id string) *Field {
@@ -34,11 +35,12 @@ func NewField(bus *event.Bus, w int, h int, id string) *Field {
 			FallTimer:    0,
 			Dirty:        false,
 		},
-		GameOver:      false,
-		Dirty:         true,
-		bedrockHeight: 0,
-		lastUpdate:    nil,
-		eventBus:      bus,
+		GameOver:         false,
+		Dirty:            true,
+		requestedBedrock: 0,
+		currentBedrock:   0,
+		lastUpdate:       nil,
+		eventBus:         bus,
 	}
 }
 
@@ -114,35 +116,47 @@ func (f *Field) canPutPiece(p *Piece, x int, y int) bool {
 	return true
 }
 
-func (f *Field) SetBedrock(h int) {
-	for y := 0; y < h; y++ {
+func (f *Field) ApplyBedrock() {
+	for f.currentBedrock < f.requestedBedrock {
+		for y := 0; y < f.Height; y++ {
+			for x := 0; x < f.Width; x++ {
+				blockData := f.GetDataXY(x, y)
+
+				if blockData != 0 && y == 0 {
+					f.GameOver = true
+					return
+				}
+
+				if y != 0 {
+					f.SetDataXY(x, y-1, blockData)
+				}
+			}
+		}
+
+		f.currentBedrock++
+
 		for x := 0; x < f.Width; x++ {
-			f.SetDataXY(x, f.Height-1-y, Bedrock)
+			f.SetDataXY(x, f.Height-f.currentBedrock, Bedrock)
 		}
 	}
 
 	f.Dirty = true
-	f.bedrockHeight = h
 }
 
 func (f *Field) IncreaseBedrock(delta int) {
-	f.bedrockHeight += delta
+	f.requestedBedrock += delta
 
-	if f.bedrockHeight > f.Height {
-		f.bedrockHeight = f.Height
+	if f.requestedBedrock > f.Height {
+		f.requestedBedrock = f.Height
 	}
-
-	f.SetBedrock(f.bedrockHeight)
 }
 
 func (f *Field) DecreaseBedrock(delta int) {
-	f.bedrockHeight -= delta
+	f.requestedBedrock -= delta
 
-	if f.bedrockHeight < 0 {
-		f.bedrockHeight = 0
+	if f.requestedBedrock < 0 {
+		f.requestedBedrock = 0
 	}
-
-	f.SetBedrock(f.bedrockHeight)
 }
 
 func (f *Field) ClearFullRows() int {

@@ -16,6 +16,7 @@ type Piece struct {
 }
 
 // todo: better piece permutation
+// distribute 7 pieces over and over again
 
 func GetRandomPiece() *Piece {
 	return Pieces[rng.Intn(len(Pieces))].Clone()

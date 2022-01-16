@@ -5,7 +5,7 @@ package bloccs
 const EventHello = "hello"
 const EventHelloAck = "hello_ack"
 const EventRowsCleared = "rows_cleared"
-const EventGameFieldUpdate = "game_update"
+const EventGameUpdate = "game_update"
 const EventPlayerJoin = "player_join"
 const EventPlayerLeave = "player_leave"
 const EventGameOver = "game_over"

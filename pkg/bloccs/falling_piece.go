@@ -53,6 +53,8 @@ func (p *FallingPieceData) Next(f *Field) {
 
 	p.NextPiece = GetRandomPiece()
 
+	f.ApplyBedrock()
+
 	f.eventBus.Publish(event.New(fmt.Sprintf("update/%s", f.ID), EventUpdateFallingPiece, &event.Payload{
 		"falling_piece_data": f.FallingPiece,
 		"piece_display":      f.FallingPiece.CurrentPiece.GetData(),
@@ -90,8 +92,7 @@ func (p *FallingPieceData) Move(f *Field, dx int, dy int, dr int) bool {
 	return false
 }
 
-// Punch returns false on gameover
-func (p *FallingPieceData) Punch(f *Field) bool {
+func (p *FallingPieceData) HardDrop(f *Field) bool {
 	if p == nil {
 		return false
 	}

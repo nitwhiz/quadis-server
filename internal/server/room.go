@@ -3,6 +3,7 @@ package server
 import (
 	"bloccs-server/pkg/bloccs"
 	"bloccs-server/pkg/event"
+	"fmt"
 	"github.com/google/uuid"
 	"log"
 	"sync"
@@ -79,6 +80,43 @@ func (r *Room) AddPlayer(p *Player) {
 	r.eventBus.Subscribe("update/.*", func(e *event.Event) {
 		if err := passEvent(p, e); err != nil {
 			log.Println("error passing event")
+		}
+	}, g)
+
+	r.eventBus.Subscribe(fmt.Sprintf("update/%s", p.ID), func(e *event.Event) {
+		if e.Type == bloccs.EventRowsCleared {
+			if count, ok := (*e.Payload)["count"]; ok {
+				r.gamesMutex.Lock()
+
+				for pId, g := range r.games {
+					if pId != p.ID {
+						g.Field.IncreaseBedrock(count.(int))
+					}
+				}
+
+				r.games[p.ID].Field.DecreaseBedrock(count.(int))
+
+				// todo: refactor
+
+				switch count.(int) {
+				case 1:
+					r.games[p.ID].Score += 60
+					break
+				case 2:
+					r.games[p.ID].Score += 150
+					break
+				case 3:
+					r.games[p.ID].Score += 420
+					break
+				case 4:
+					r.games[p.ID].Score += 2500
+					break
+				default:
+					break
+				}
+
+				r.gamesMutex.Unlock()
+			}
 		}
 	}, g)
 

@@ -14,6 +14,7 @@ type Game struct {
 	Field           *Field
 	EventBus        *event.Bus
 	Over            bool
+	Score           int
 	stopChannel     chan bool
 	globalWaitGroup *sync.WaitGroup
 }
@@ -24,6 +25,7 @@ func NewGame(bus *event.Bus, id string) *Game {
 		Field:           NewField(bus, 10, 20, id),
 		EventBus:        bus,
 		Over:            false,
+		Score:           0,
 		stopChannel:     make(chan bool),
 		globalWaitGroup: &sync.WaitGroup{},
 	}
@@ -65,8 +67,9 @@ func (g *Game) Stop() {
 // todo: should actually be in field
 
 func (g *Game) PublishFieldUpdate() {
-	g.EventBus.Publish(event.New(fmt.Sprintf("update/%s", g.ID), EventGameFieldUpdate, &event.Payload{
+	g.EventBus.Publish(event.New(fmt.Sprintf("update/%s", g.ID), EventGameUpdate, &event.Payload{
 		"field": g.Field,
+		"score": g.Score,
 	}))
 }
 
@@ -113,7 +116,7 @@ func (g *Game) Command(cmd string) bool {
 		g.Field.FallingPiece.Move(g.Field, 0, 1, 0)
 		return true
 	case "P":
-		g.Field.FallingPiece.Punch(g.Field)
+		g.Field.FallingPiece.HardDrop(g.Field)
 		return true
 	case "X":
 		g.Field.FallingPiece.Move(g.Field, 0, 0, 1)
