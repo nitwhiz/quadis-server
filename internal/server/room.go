@@ -3,7 +3,6 @@ package server
 import (
 	"bloccs-server/pkg/bloccs"
 	"bloccs-server/pkg/event"
-	"fmt"
 	"github.com/google/uuid"
 	"log"
 	"sync"
@@ -77,15 +76,7 @@ func (r *Room) AddPlayer(p *Player) {
 		}
 	}, g)
 
-	r.eventBus.AddChannel(fmt.Sprintf("player/%s", p.ID))
-
-	r.eventBus.Subscribe("game_update/.*", func(e *event.Event) {
-		if err := passEvent(p, e); err != nil {
-			log.Println("error passing event")
-		}
-	}, g)
-
-	r.eventBus.Subscribe(fmt.Sprintf("player/%s", p.ID), func(e *event.Event) {
+	r.eventBus.Subscribe("update/.*", func(e *event.Event) {
 		if err := passEvent(p, e); err != nil {
 			log.Println("error passing event")
 		}
@@ -121,8 +112,6 @@ func (r *Room) RemovePlayer(p *Player) {
 	}
 
 	r.gamesMutex.Unlock()
-
-	r.eventBus.RemoveChannel(fmt.Sprintf("player/%s", p.ID))
 
 	delete(r.Players, p.ID)
 
@@ -177,6 +166,8 @@ func (r *Room) Start() {
 	}
 
 	r.playersMutex.Unlock()
+
+	r.eventBus.Publish(event.New(bloccs.ChannelRoom, bloccs.EventGameStart, nil))
 }
 
 func (r *Room) Stop() {

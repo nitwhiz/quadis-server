@@ -28,7 +28,7 @@ func NewGame(bus *event.Bus, id string) *Game {
 		globalWaitGroup: &sync.WaitGroup{},
 	}
 
-	bus.AddChannel(fmt.Sprintf("game_update/%s", id))
+	bus.AddChannel(fmt.Sprintf("update/%s", id))
 
 	return game
 }
@@ -39,18 +39,17 @@ func (g *Game) Start() {
 	go func() {
 		defer g.globalWaitGroup.Done()
 
+		ticker := time.NewTicker(time.Millisecond * 16)
+
+		defer ticker.Stop()
+
 		for {
 			select {
 			case <-g.stopChannel:
 				return
-			case <-time.After(time.Millisecond):
-				break
+			case <-ticker.C:
+				g.Update()
 			}
-
-			g.Update()
-
-			// 60 tps = 16 ms per frame = 15 ms idle + 1 ms stop wait
-			time.Sleep(time.Millisecond * 15)
 		}
 	}()
 }
@@ -59,19 +58,19 @@ func (g *Game) Stop() {
 	close(g.stopChannel)
 	g.globalWaitGroup.Wait()
 
-	g.EventBus.RemoveChannel(fmt.Sprintf("game_update/%s", g.ID))
+	g.EventBus.RemoveChannel(fmt.Sprintf("update/%s", g.ID))
 }
 
 // todo: should actually be in field
 
 func (g *Game) PublishFieldUpdate() {
-	g.EventBus.Publish(event.New(fmt.Sprintf("game_update/%s", g.ID), EventGameFieldUpdate, &event.Payload{
+	g.EventBus.Publish(event.New(fmt.Sprintf("update/%s", g.ID), EventGameFieldUpdate, &event.Payload{
 		"field": g.Field,
 	}))
 }
 
 func (g *Game) PublishFallingPieceUpdate() {
-	g.EventBus.Publish(event.New(fmt.Sprintf("game_update/%s", g.Field.ID), EventUpdateFallingPiece, &event.Payload{
+	g.EventBus.Publish(event.New(fmt.Sprintf("update/%s", g.Field.ID), EventUpdateFallingPiece, &event.Payload{
 		"falling_piece_data": g.Field.FallingPiece,
 		"piece_display":      g.Field.FallingPiece.CurrentPiece.GetData(),
 	}))
@@ -89,7 +88,7 @@ func (g *Game) Update() {
 	}
 
 	if gameOver {
-		g.EventBus.Publish(event.New(fmt.Sprintf("game_update/%s", g.ID), EventGameOver, nil))
+		g.EventBus.Publish(event.New(fmt.Sprintf("update/%s", g.ID), EventGameOver, nil))
 	}
 
 	g.Over = gameOver

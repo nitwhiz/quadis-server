@@ -90,10 +90,14 @@ func (r *Room) handshakeHello(p *Player) error {
 
 		r.AddPlayer(p)
 
+		r.playersMutex.Lock()
+
 		bs, jsonErr := json.Marshal(event.New("none", bloccs.EventHelloAck, &event.Payload{
 			"you":  p,
 			"room": r,
 		}))
+
+		r.playersMutex.Unlock()
 
 		if jsonErr != nil {
 			log.Println("cannot marshal ack message")

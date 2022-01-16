@@ -56,7 +56,7 @@ func (f *Field) Update() (bool, bool) {
 			}
 
 			if f.FallingPiece.Dirty {
-				f.eventBus.Publish(event.New(fmt.Sprintf("game_update/%s", f.ID), EventUpdateFallingPiece, &event.Payload{
+				f.eventBus.Publish(event.New(fmt.Sprintf("update/%s", f.ID), EventUpdateFallingPiece, &event.Payload{
 					"falling_piece_data": f.FallingPiece,
 					"piece_display":      f.FallingPiece.CurrentPiece.GetData(),
 				}))
