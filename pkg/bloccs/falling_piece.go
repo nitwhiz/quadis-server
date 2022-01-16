@@ -53,7 +53,7 @@ func (p *FallingPieceData) Next(f *Field) {
 
 	p.NextPiece = GetRandomPiece()
 
-	f.eventBus.Publish(event.New(fmt.Sprintf("game_update/%s", f.ID), EventUpdateFallingPiece, &event.Payload{
+	f.eventBus.Publish(event.New(fmt.Sprintf("update/%s", f.ID), EventUpdateFallingPiece, &event.Payload{
 		"falling_piece_data": f.FallingPiece,
 		"piece_display":      f.FallingPiece.CurrentPiece.GetData(),
 	}))
@@ -114,7 +114,7 @@ func (p *FallingPieceData) Lock(f *Field) bool {
 	cleared := f.ClearFullRows()
 
 	if cleared != 0 {
-		f.eventBus.Publish(event.New(fmt.Sprintf("game_update/%s", f.ID), EventRowsCleared, &event.Payload{
+		f.eventBus.Publish(event.New(fmt.Sprintf("update/%s", f.ID), EventRowsCleared, &event.Payload{
 			"count": cleared,
 		}))
 	}
@@ -122,7 +122,7 @@ func (p *FallingPieceData) Lock(f *Field) bool {
 	p.Next(f)
 
 	if nm := p.CanMove(f, 0, 1, 0); !nm {
-		f.eventBus.Publish(event.New(fmt.Sprintf("game_update/%s", f.ID), EventGameOver, &event.Payload{}))
+		f.eventBus.Publish(event.New(fmt.Sprintf("update/%s", f.ID), EventGameOver, &event.Payload{}))
 
 		return false
 	}

@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 )
 
-// todo: numbers would be nice
-
 type Payload map[string]interface{}
+
+// todo: playload types
 
 type Event struct {
 	Channel string   `json:"channel"`

@@ -3,7 +3,6 @@ package server
 import (
 	"bloccs-server/pkg/bloccs"
 	"bloccs-server/pkg/event"
-	"fmt"
 	"github.com/google/uuid"
 	"log"
 	"sync"
@@ -20,15 +19,21 @@ type Room struct {
 }
 
 func NewRoom() *Room {
-	return &Room{
+	b := event.NewBus()
+
+	r := &Room{
 		ID:            uuid.NewString(),
 		Players:       map[string]*Player{},
 		games:         map[string]*bloccs.Game{},
 		gamesMutex:    &sync.Mutex{},
-		eventBus:      event.NewBus(),
+		eventBus:      b,
 		playersMutex:  &sync.Mutex{},
 		roomWaitGroup: &sync.WaitGroup{},
 	}
+
+	b.AddChannel(bloccs.ChannelRoom)
+
+	return r
 }
 
 func passEvent(p *Player, e *event.Event) error {
@@ -59,41 +64,33 @@ func (r *Room) AddPlayer(p *Player) {
 
 	g := bloccs.NewGame(r.eventBus, p.ID)
 
-	r.eventBus.AddChannel(fmt.Sprintf("player/%s", p.ID))
-
-	r.eventBus.Subscribe("game_update/.*", func(e *event.Event) {
-		if err := passEvent(p, e); err != nil {
-			r.RemovePlayer(p)
-		}
-	}, g)
-
-	r.eventBus.Subscribe(fmt.Sprintf("player/%s", p.ID), func(e *event.Event) {
-		if err := passEvent(p, e); err != nil {
-			r.RemovePlayer(p)
-		}
-	}, g)
-
 	r.gamesMutex.Lock()
 	r.games[p.ID] = g
 	r.gamesMutex.Unlock()
 
 	r.Players[p.ID] = p
 
+	r.eventBus.Subscribe(bloccs.ChannelRoom, func(e *event.Event) {
+		if err := passEvent(p, e); err != nil {
+			log.Println("error passing event")
+		}
+	}, g)
+
+	r.eventBus.Subscribe("update/.*", func(e *event.Event) {
+		if err := passEvent(p, e); err != nil {
+			log.Println("error passing event")
+		}
+	}, g)
+
 	r.playersMutex.Unlock()
 
-	r.eventBus.Publish(event.New(event.ChanBroadcast, bloccs.EventPlayerJoin, &event.Payload{
+	// own join is received, too, maybe that's not a problem
+	r.eventBus.Publish(event.New(bloccs.ChannelRoom, bloccs.EventPlayerJoin, &event.Payload{
 		"player": p,
-	}))
-
-	r.eventBus.Publish(event.New(fmt.Sprintf("player/%s", p.ID), bloccs.EventRoomInfo, &event.Payload{
-		"room": r,
-		"you":  p,
 	}))
 }
 
 func (r *Room) RemovePlayer(p *Player) {
-	// todo: player removal does not work, join & leave events are sent to new players
-
 	r.playersMutex.Lock()
 
 	defer func() {
@@ -116,11 +113,9 @@ func (r *Room) RemovePlayer(p *Player) {
 
 	r.gamesMutex.Unlock()
 
-	r.eventBus.RemoveChannel(fmt.Sprintf("player/%s", p.ID))
-
 	delete(r.Players, p.ID)
 
-	r.eventBus.Publish(event.New(event.ChanBroadcast, bloccs.EventPlayerLeave, &event.Payload{
+	r.eventBus.Publish(event.New(bloccs.ChannelRoom, bloccs.EventPlayerLeave, &event.Payload{
 		"player": p,
 	}))
 }
@@ -138,13 +133,13 @@ func (r *Room) Start() {
 
 	for _, player := range r.Players {
 		go func(p *Player) {
-			defer r.roomWaitGroup.Done()
 			defer r.RemovePlayer(p)
+			defer r.roomWaitGroup.Done()
 
 			r.roomWaitGroup.Add(1)
 
 			for {
-				_, msg, err := p.Conn.ReadMessage()
+				msg, err := p.ReadMessage()
 
 				if err != nil {
 					log.Println("error reading message", err)
@@ -171,6 +166,8 @@ func (r *Room) Start() {
 	}
 
 	r.playersMutex.Unlock()
+
+	r.eventBus.Publish(event.New(bloccs.ChannelRoom, bloccs.EventGameStart, nil))
 }
 
 func (r *Room) Stop() {

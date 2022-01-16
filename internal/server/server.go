@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -41,16 +42,20 @@ func (s *BloccsServer) GetRoom(id string) *Room {
 	return nil
 }
 
-func (s *BloccsServer) connect(playerName string, room *Room, w http.ResponseWriter, r *http.Request) error {
+func (s *BloccsServer) connect(roomId string, w http.ResponseWriter, r *http.Request) error {
+	room := s.GetRoom(roomId)
+
+	if room == nil {
+		return errors.New("room not found")
+	}
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 
 	if err != nil {
 		return err
 	}
 
-	player := NewPlayer(playerName, conn)
-
-	room.AddPlayer(player)
+	_ = room.Join(conn)
 
 	return nil
 }
@@ -62,6 +67,8 @@ func (s *BloccsServer) startHTTPServer() error {
 
 	r.POST("/rooms", func(c *gin.Context) {
 		room := s.CreateRoom()
+
+		s.rooms[room.ID] = room
 
 		c.JSON(http.StatusOK, gin.H{
 			"roomId": room.ID,
@@ -94,7 +101,7 @@ func (s *BloccsServer) startHTTPServer() error {
 		c.Status(http.StatusNoContent)
 	})
 
-	r.GET("/rooms/:roomId/socket", func(c *gin.Context) {
+	r.GET("/rooms/:roomId", func(c *gin.Context) {
 		roomId := c.Param("roomId")
 
 		if roomId == "" {
@@ -108,16 +115,24 @@ func (s *BloccsServer) startHTTPServer() error {
 		room := s.GetRoom(roomId)
 
 		if room == nil {
-			c.JSON(http.StatusNotFound, gin.H{
-				"error": "room not found",
+			c.Status(http.StatusNotFound)
+		} else {
+			c.Status(http.StatusNoContent)
+		}
+	})
+
+	r.GET("/rooms/:roomId/socket", func(c *gin.Context) {
+		roomId := c.Param("roomId")
+
+		if roomId == "" {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "room id is empty",
 			})
 
 			return
 		}
 
-		playerName := "test"
-
-		if err := s.connect(playerName, room, c.Writer, c.Request); err != nil {
+		if err := s.connect(roomId, c.Writer, c.Request); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error": "unable to connect: " + err.Error(),
 			})
