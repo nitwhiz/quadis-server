@@ -7,6 +7,7 @@ import (
 )
 
 type FallingPieceData struct {
+	HoldingPiece *Piece `json:"holding_piece"`
 	NextPiece    *Piece `json:"next_piece"`
 	CurrentPiece *Piece `json:"current_piece"`
 	X            int    `json:"x"`
@@ -14,6 +15,28 @@ type FallingPieceData struct {
 	Speed        int    `json:"speed"`
 	FallTimer    int    `json:"fall_timer"`
 	Dirty        bool   `json:"-"`
+}
+
+func (p *FallingPieceData) HoldCurrentPiece(f *Field) {
+	// todo: disallow holding pieces 2 times in a row
+	// todo: refactor
+
+	if p.HoldingPiece != nil {
+		p.CurrentPiece, p.HoldingPiece = p.HoldingPiece, p.CurrentPiece
+
+		p.X = f.GetCenterX()
+		p.Y = 0
+
+		// todo: configurable
+		p.Speed = 1
+
+		p.FallTimer = 1000
+
+		p.Dirty = true
+	} else {
+		p.HoldingPiece = p.CurrentPiece
+		p.Next(f)
+	}
 }
 
 func (p *FallingPieceData) Update(f *Field, delta int) bool {
@@ -51,11 +74,11 @@ func (p *FallingPieceData) Next(f *Field) {
 
 	p.Dirty = true
 
-	p.NextPiece = GetRandomPiece()
+	p.NextPiece = f.rng.NextPiece()
 
 	f.ApplyBedrock()
 
-	f.eventBus.Publish(event.New(fmt.Sprintf("update/%s", f.ID), EventUpdateFallingPiece, &event.Payload{
+	f.eventBus.Publish(event.New(fmt.Sprintf("update/%s", f.PlayerID), EventUpdateFallingPiece, &event.Payload{
 		"falling_piece_data": f.FallingPiece,
 		"piece_display":      f.FallingPiece.CurrentPiece.GetData(),
 	}))
@@ -66,7 +89,7 @@ func (p *FallingPieceData) CanMove(f *Field, dx int, dy int, dr int) bool {
 		return false
 	}
 
-	testPiece := p.CurrentPiece.Clone()
+	testPiece := NewPiece(p.CurrentPiece)
 
 	for ; dr > 0; dr-- {
 		testPiece.Rotate()
@@ -115,7 +138,7 @@ func (p *FallingPieceData) Lock(f *Field) bool {
 	cleared := f.ClearFullRows()
 
 	if cleared != 0 {
-		f.eventBus.Publish(event.New(fmt.Sprintf("update/%s", f.ID), EventRowsCleared, &event.Payload{
+		f.eventBus.Publish(event.New(fmt.Sprintf("update/%s", f.PlayerID), EventRowsCleared, &event.Payload{
 			"count": cleared,
 		}))
 	}
@@ -123,7 +146,7 @@ func (p *FallingPieceData) Lock(f *Field) bool {
 	p.Next(f)
 
 	if nm := p.CanMove(f, 0, 1, 0); !nm {
-		f.eventBus.Publish(event.New(fmt.Sprintf("update/%s", f.ID), EventGameOver, &event.Payload{}))
+		f.eventBus.Publish(event.New(fmt.Sprintf("update/%s", f.PlayerID), EventGameOver, &event.Payload{}))
 
 		return false
 	}

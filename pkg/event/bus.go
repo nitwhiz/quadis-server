@@ -139,8 +139,7 @@ func (b *Bus) Subscribe(channelExpr string, handler Handler, source interface{})
 }
 
 func (b *Bus) Unsubscribe(source interface{}) {
-	// todo: fix locking - just exits here
-	//b.handlersMutex.Lock()
+	b.handlersMutex.Lock()
 
 	for expr, sources := range b.handlers {
 		for src := range sources {
@@ -150,7 +149,7 @@ func (b *Bus) Unsubscribe(source interface{}) {
 		}
 	}
 
-	//b.handlersMutex.Unlock()
+	b.handlersMutex.Unlock()
 }
 
 func (b *Bus) Publish(event *Event) {

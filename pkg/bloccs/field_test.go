@@ -11,7 +11,7 @@ func TestField_PutPiece(t *testing.T) {
 
 	field := NewField(bus, 6, 6, "test")
 
-	piece := PieceT.Clone()
+	piece := NewPiece(&PieceT)
 
 	field.PutPiece(piece, 2, 2)
 

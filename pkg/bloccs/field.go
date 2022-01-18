@@ -7,41 +7,45 @@ import (
 )
 
 type Field struct {
-	ID               string            `json:"id"`
+	PlayerID         string            `json:"id"`
 	Data             FieldData         `json:"data"`
 	Width            int               `json:"width"`
 	Height           int               `json:"height"`
 	FallingPiece     *FallingPieceData `json:"falling_piece"`
 	GameOver         bool              `json:"game_over"`
 	Dirty            bool
+	rng              *RNG
 	currentBedrock   int
 	requestedBedrock int
 	lastUpdate       *time.Time
 	eventBus         *event.Bus
 }
 
-func NewField(bus *event.Bus, w int, h int, id string) *Field {
-	return &Field{
-		ID:     id,
-		Data:   make(FieldData, w*h),
-		Width:  w,
-		Height: h,
+func NewField(bus *event.Bus, rng *RNG, w int, h int, playerId string) *Field {
+	f := Field{
+		PlayerID: playerId,
+		Data:     make(FieldData, w*h),
+		Width:    w,
+		Height:   h,
 		FallingPiece: &FallingPieceData{
-			NextPiece:    GetRandomPiece(),
-			CurrentPiece: nil,
-			X:            0,
-			Y:            0,
-			Speed:        0,
-			FallTimer:    0,
-			Dirty:        false,
+			X:         0,
+			Y:         0,
+			Speed:     0,
+			FallTimer: 0,
+			Dirty:     false,
 		},
 		GameOver:         false,
 		Dirty:            true,
+		rng:              rng,
 		requestedBedrock: 0,
 		currentBedrock:   0,
 		lastUpdate:       nil,
 		eventBus:         bus,
 	}
+
+	f.FallingPiece.NextPiece = rng.NextPiece()
+
+	return &f
 }
 
 func (f *Field) Update() (bool, bool) {
@@ -56,7 +60,7 @@ func (f *Field) Update() (bool, bool) {
 			}
 
 			if f.FallingPiece.Dirty {
-				f.eventBus.Publish(event.New(fmt.Sprintf("update/%s", f.ID), EventUpdateFallingPiece, &event.Payload{
+				f.eventBus.Publish(event.New(fmt.Sprintf("update/%s", f.PlayerID), EventUpdateFallingPiece, &event.Payload{
 					"falling_piece_data": f.FallingPiece,
 					"piece_display":      f.FallingPiece.CurrentPiece.GetData(),
 				}))
@@ -117,6 +121,8 @@ func (f *Field) canPutPiece(p *Piece, x int, y int) bool {
 }
 
 func (f *Field) ApplyBedrock() {
+	// todo: apply "negative" bedrock
+
 	for f.currentBedrock < f.requestedBedrock {
 		for y := 0; y < f.Height; y++ {
 			for x := 0; x < f.Width; x++ {
@@ -192,7 +198,6 @@ func (f *Field) ClearFullRows() int {
 	}
 
 	if cleared > 0 {
-		f.DecreaseBedrock(cleared)
 		f.Dirty = true
 	}
 

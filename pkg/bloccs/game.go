@@ -3,6 +3,7 @@ package bloccs
 import (
 	"bloccs-server/pkg/event"
 	"fmt"
+	"hash/fnv"
 	"sync"
 	"time"
 )
@@ -10,7 +11,7 @@ import (
 type UpdateHandler func()
 
 type Game struct {
-	ID              string
+	PlayerID        string
 	Field           *Field
 	EventBus        *event.Bus
 	Over            bool
@@ -19,10 +20,14 @@ type Game struct {
 	globalWaitGroup *sync.WaitGroup
 }
 
-func NewGame(bus *event.Bus, id string) *Game {
+func NewGame(bus *event.Bus, roomId string, playerId string) *Game {
+	h := fnv.New32a()
+
+	_, _ = h.Write([]byte(roomId))
+
 	game := &Game{
-		ID:              id,
-		Field:           NewField(bus, 10, 20, id),
+		PlayerID:        playerId,
+		Field:           NewField(bus, NewRNG(int64(h.Sum32())), 10, 20, playerId),
 		EventBus:        bus,
 		Over:            false,
 		Score:           0,
@@ -30,7 +35,7 @@ func NewGame(bus *event.Bus, id string) *Game {
 		globalWaitGroup: &sync.WaitGroup{},
 	}
 
-	bus.AddChannel(fmt.Sprintf("update/%s", id))
+	bus.AddChannel(fmt.Sprintf("update/%s", playerId))
 
 	return game
 }
@@ -61,20 +66,21 @@ func (g *Game) Stop() {
 	close(g.stopChannel)
 	g.globalWaitGroup.Wait()
 
-	g.EventBus.RemoveChannel(fmt.Sprintf("update/%s", g.ID))
+	g.EventBus.RemoveChannel(fmt.Sprintf("update/%s", g.PlayerID))
 }
 
 // todo: should actually be in field
 
 func (g *Game) PublishFieldUpdate() {
-	g.EventBus.Publish(event.New(fmt.Sprintf("update/%s", g.ID), EventGameUpdate, &event.Payload{
+	g.EventBus.Publish(event.New(fmt.Sprintf("update/%s", g.PlayerID), EventGameUpdate, &event.Payload{
 		"field": g.Field,
+		// todo: this is too late
 		"score": g.Score,
 	}))
 }
 
 func (g *Game) PublishFallingPieceUpdate() {
-	g.EventBus.Publish(event.New(fmt.Sprintf("update/%s", g.Field.ID), EventUpdateFallingPiece, &event.Payload{
+	g.EventBus.Publish(event.New(fmt.Sprintf("update/%s", g.Field.PlayerID), EventUpdateFallingPiece, &event.Payload{
 		"falling_piece_data": g.Field.FallingPiece,
 		"piece_display":      g.Field.FallingPiece.CurrentPiece.GetData(),
 	}))
@@ -95,7 +101,7 @@ func (g *Game) Update() {
 	}
 
 	if gameOver {
-		g.EventBus.Publish(event.New(fmt.Sprintf("update/%s", g.ID), EventGameOver, nil))
+		g.EventBus.Publish(event.New(fmt.Sprintf("update/%s", g.PlayerID), EventGameOver, nil))
 	}
 
 	g.Over = gameOver
@@ -120,6 +126,9 @@ func (g *Game) Command(cmd string) bool {
 		return true
 	case "X":
 		g.Field.FallingPiece.Move(g.Field, 0, 0, 1)
+		return true
+	case "H":
+		g.Field.FallingPiece.HoldCurrentPiece(g.Field)
 		return true
 	default:
 		return false

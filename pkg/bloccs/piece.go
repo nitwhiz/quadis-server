@@ -1,12 +1,5 @@
 package bloccs
 
-import (
-	"math/rand"
-	"time"
-)
-
-var rng = rand.New(rand.NewSource(time.Now().UnixMilli()))
-
 const PieceBufWidth = 4
 
 type Piece struct {
@@ -15,14 +8,7 @@ type Piece struct {
 	rotationStates *[]FieldData
 }
 
-// todo: better piece permutation
-// distribute 7 pieces over and over again
-
-func GetRandomPiece() *Piece {
-	return Pieces[rng.Intn(len(Pieces))].Clone()
-}
-
-func (p *Piece) Clone() *Piece {
+func NewPiece(p *Piece) *Piece {
 	res := *p
 	return &res
 }
@@ -223,12 +209,12 @@ var PieceZ = Piece{
 	},
 }
 
-var Pieces = []Piece{
-	PieceT,
-	PieceL,
-	PieceI,
-	PieceJ,
-	PieceO,
-	PieceS,
-	PieceZ,
+var Pieces = []*Piece{
+	&PieceT,
+	&PieceL,
+	&PieceI,
+	&PieceJ,
+	&PieceO,
+	&PieceS,
+	&PieceZ,
 }

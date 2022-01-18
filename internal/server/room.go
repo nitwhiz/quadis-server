@@ -63,7 +63,7 @@ func (r *Room) AddPlayer(p *Player) {
 		return
 	}
 
-	g := bloccs.NewGame(r.eventBus, p.ID)
+	g := bloccs.NewGame(r.eventBus, r.ID, p.ID)
 
 	r.gamesMutex.Lock()
 	r.games[p.ID] = g
