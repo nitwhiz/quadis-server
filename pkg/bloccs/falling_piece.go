@@ -15,11 +15,17 @@ type FallingPieceData struct {
 	Speed        int    `json:"speed"`
 	FallTimer    int    `json:"fall_timer"`
 	Dirty        bool   `json:"-"`
+	HoldLock     bool   `json:"-"`
 }
 
 func (p *FallingPieceData) HoldCurrentPiece(f *Field) {
-	// todo: disallow holding pieces 2 times in a row
 	// todo: refactor
+
+	if p.HoldLock {
+		return
+	}
+
+	p.HoldLock = true
 
 	if p.HoldingPiece != nil {
 		p.CurrentPiece, p.HoldingPiece = p.HoldingPiece, p.CurrentPiece
@@ -31,6 +37,8 @@ func (p *FallingPieceData) HoldCurrentPiece(f *Field) {
 		p.Speed = 1
 
 		p.FallTimer = 1000
+
+		p.CurrentPiece.Rotation = 0
 
 		p.Dirty = true
 	} else {
@@ -75,8 +83,6 @@ func (p *FallingPieceData) Next(f *Field) {
 	p.Dirty = true
 
 	p.NextPiece = f.rng.NextPiece()
-
-	f.ApplyBedrock()
 
 	f.eventBus.Publish(event.New(fmt.Sprintf("update/%s", f.PlayerID), EventUpdateFallingPiece, &event.Payload{
 		"falling_piece_data": f.FallingPiece,
@@ -150,6 +156,8 @@ func (p *FallingPieceData) Lock(f *Field) bool {
 
 		return false
 	}
+
+	p.HoldLock = false
 
 	return true
 }

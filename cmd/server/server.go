@@ -7,6 +7,8 @@ func main() {
 
 	err := srv.Start()
 
+	srv.Stop()
+
 	if err != nil {
 		panic(err)
 	}

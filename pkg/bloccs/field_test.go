@@ -9,7 +9,7 @@ import (
 func TestField_PutPiece(t *testing.T) {
 	bus := event.NewBus()
 
-	field := NewField(bus, 6, 6, "test")
+	field := NewField(bus, NewRNG(1337), 6, 6, "test")
 
 	piece := NewPiece(&PieceT)
 

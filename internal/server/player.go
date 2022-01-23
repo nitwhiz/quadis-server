@@ -26,6 +26,17 @@ func NewPlayer(conn *websocket.Conn) *Player {
 	}
 }
 
+func (p *Player) Ping() {
+	p.ConnMutex.Lock()
+	defer p.ConnMutex.Unlock()
+
+	_ = p.Conn.SetWriteDeadline(time.Now().Add(time.Second * 10))
+
+	if err := p.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+		return
+	}
+}
+
 func (p *Player) ReadMessage() ([]byte, error) {
 	_ = p.Conn.SetReadDeadline(time.Now().Add(time.Second * 5))
 

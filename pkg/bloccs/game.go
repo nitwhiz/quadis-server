@@ -11,11 +11,13 @@ import (
 type UpdateHandler func()
 
 type Game struct {
-	PlayerID        string
-	Field           *Field
-	EventBus        *event.Bus
-	Over            bool
+	PlayerID string
+	Field    *Field
+	EventBus *event.Bus
+	Over     bool
+	// todo: refactor to score struct
 	Score           int
+	Lines           int
 	stopChannel     chan bool
 	globalWaitGroup *sync.WaitGroup
 }
@@ -31,6 +33,7 @@ func NewGame(bus *event.Bus, roomId string, playerId string) *Game {
 		EventBus:        bus,
 		Over:            false,
 		Score:           0,
+		Lines:           0,
 		stopChannel:     make(chan bool),
 		globalWaitGroup: &sync.WaitGroup{},
 	}
@@ -74,8 +77,9 @@ func (g *Game) Stop() {
 func (g *Game) PublishFieldUpdate() {
 	g.EventBus.Publish(event.New(fmt.Sprintf("update/%s", g.PlayerID), EventGameUpdate, &event.Payload{
 		"field": g.Field,
-		// todo: this is too late
+		// todo: this is too late?
 		"score": g.Score,
+		"lines": g.Lines,
 	}))
 }
 

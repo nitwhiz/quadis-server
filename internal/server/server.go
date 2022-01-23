@@ -6,6 +6,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"net/http"
+	"sync"
+	"time"
 )
 
 var upgrader = websocket.Upgrader{
@@ -15,17 +17,26 @@ var upgrader = websocket.Upgrader{
 }
 
 type BloccsServer struct {
-	rooms map[string]*Room
+	rooms             map[string]*Room
+	roomsMutex        *sync.Mutex
+	systemWaitGroup   *sync.WaitGroup
+	systemStopChannel chan bool
 }
 
 func NewBloccsServer() *BloccsServer {
 	return &BloccsServer{
-		rooms: map[string]*Room{},
+		rooms:             map[string]*Room{},
+		roomsMutex:        &sync.Mutex{},
+		systemWaitGroup:   &sync.WaitGroup{},
+		systemStopChannel: make(chan bool),
 	}
 }
 
 func (s *BloccsServer) CreateRoom() *Room {
 	room := NewRoom()
+
+	s.roomsMutex.Lock()
+	defer s.roomsMutex.Unlock()
 
 	s.rooms[room.ID] = room
 
@@ -33,6 +44,9 @@ func (s *BloccsServer) CreateRoom() *Room {
 }
 
 func (s *BloccsServer) GetRoom(id string) *Room {
+	s.roomsMutex.Lock()
+	defer s.roomsMutex.Unlock()
+
 	r, ok := s.rooms[id]
 
 	if ok {
@@ -67,8 +81,6 @@ func (s *BloccsServer) startHTTPServer() error {
 
 	r.POST("/rooms", func(c *gin.Context) {
 		room := s.CreateRoom()
-
-		s.rooms[room.ID] = room
 
 		c.JSON(http.StatusOK, gin.H{
 			"roomId": room.ID,
@@ -142,8 +154,35 @@ func (s *BloccsServer) startHTTPServer() error {
 	return r.Run("0.0.0.0:7000")
 }
 
+func (s *BloccsServer) Stop() {
+	close(s.systemStopChannel)
+
+	s.systemWaitGroup.Wait()
+}
+
 func (s *BloccsServer) Start() error {
-	// todo: start room cleaner
+	go func() {
+		s.systemWaitGroup.Add(1)
+		defer s.systemWaitGroup.Done()
+
+		for {
+			select {
+			case <-s.systemStopChannel:
+				return
+			case <-time.After(time.Second):
+				s.roomsMutex.Lock()
+
+				for _, r := range s.rooms {
+					if r.ShouldClose() {
+						r.Stop()
+					}
+				}
+
+				s.roomsMutex.Unlock()
+			}
+
+		}
+	}()
 
 	if err := s.startHTTPServer(); err != nil {
 		return err

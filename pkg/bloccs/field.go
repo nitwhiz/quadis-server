@@ -6,6 +6,8 @@ import (
 	"time"
 )
 
+// todo: add methods for getting/setting everything in here to prevent data races
+
 type Field struct {
 	PlayerID         string            `json:"id"`
 	Data             FieldData         `json:"data"`
@@ -33,6 +35,7 @@ func NewField(bus *event.Bus, rng *RNG, w int, h int, playerId string) *Field {
 			Speed:     0,
 			FallTimer: 0,
 			Dirty:     false,
+			HoldLock:  false,
 		},
 		GameOver:         false,
 		Dirty:            true,
@@ -121,7 +124,21 @@ func (f *Field) canPutPiece(p *Piece, x int, y int) bool {
 }
 
 func (f *Field) ApplyBedrock() {
-	// todo: apply "negative" bedrock
+	// todo: what to do if bedrock crashes into the piece?
+
+	for f.currentBedrock > f.requestedBedrock {
+		for y := f.Height - 1; y >= 0; y-- {
+			for x := 0; x < f.Width; x++ {
+				blockData := f.GetDataXY(x, y)
+
+				if y != f.Height-1 {
+					f.SetDataXY(x, y+1, blockData)
+				}
+			}
+		}
+
+		f.currentBedrock--
+	}
 
 	for f.currentBedrock < f.requestedBedrock {
 		for y := 0; y < f.Height; y++ {
@@ -155,6 +172,8 @@ func (f *Field) IncreaseBedrock(delta int) {
 	if f.requestedBedrock > f.Height {
 		f.requestedBedrock = f.Height
 	}
+
+	f.ApplyBedrock()
 }
 
 func (f *Field) DecreaseBedrock(delta int) {
@@ -163,6 +182,8 @@ func (f *Field) DecreaseBedrock(delta int) {
 	if f.requestedBedrock < 0 {
 		f.requestedBedrock = 0
 	}
+
+	f.ApplyBedrock()
 }
 
 func (f *Field) ClearFullRows() int {

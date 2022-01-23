@@ -22,9 +22,8 @@ func (r *Room) Join(conn *websocket.Conn) error {
 		return err
 	}
 
-	// needed?
-	conn.SetPongHandler(func(string) error {
-		_ = conn.SetReadDeadline(time.Now().Add(time.Second * 3))
+	p.Conn.SetPongHandler(func(string) error {
+		_ = p.Conn.SetReadDeadline(time.Now().Add(time.Second * 3))
 		return nil
 	})
 
@@ -41,13 +40,7 @@ func (r *Room) Join(conn *websocket.Conn) error {
 		for {
 			select {
 			case <-pingTicker.C:
-				_ = conn.SetWriteDeadline(time.Now().Add(time.Second * 10))
-
-				// todo: ping is a concurrent write to Player.SendMessage sometimes
-				if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-					return
-				}
-
+				p.Ping()
 				break
 			}
 		}

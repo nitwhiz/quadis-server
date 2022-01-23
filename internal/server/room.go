@@ -7,16 +7,18 @@ import (
 	"github.com/google/uuid"
 	"log"
 	"sync"
+	"time"
 )
 
 type Room struct {
 	ID            string             `json:"id"`
 	Players       map[string]*Player `json:"players"`
+	playersMutex  *sync.Mutex
 	games         map[string]*bloccs.Game
 	gamesMutex    *sync.Mutex
 	eventBus      *event.Bus
-	playersMutex  *sync.Mutex
 	roomWaitGroup *sync.WaitGroup
+	createAt      time.Time
 }
 
 func NewRoom() *Room {
@@ -30,11 +32,23 @@ func NewRoom() *Room {
 		eventBus:      b,
 		playersMutex:  &sync.Mutex{},
 		roomWaitGroup: &sync.WaitGroup{},
+		createAt:      time.Now(),
 	}
 
 	b.AddChannel(bloccs.ChannelRoom)
 
 	return r
+}
+
+func (r *Room) ShouldClose() bool {
+	r.playersMutex.Lock()
+	defer r.playersMutex.Unlock()
+
+	if len(r.Players) == 0 && time.Since(r.createAt) > time.Minute*15 {
+		return true
+	}
+
+	return false
 }
 
 func passEvent(p *Player, e *event.Event) error {
@@ -78,6 +92,7 @@ func (r *Room) AddPlayer(p *Player) {
 	}, g)
 
 	r.eventBus.Subscribe("update/.*", func(e *event.Event) {
+		// todo: send other players updates every X seconds max
 		if err := passEvent(p, e); err != nil {
 			log.Println("error passing event")
 		}
@@ -85,6 +100,8 @@ func (r *Room) AddPlayer(p *Player) {
 
 	r.eventBus.Subscribe(fmt.Sprintf("update/%s", p.ID), func(e *event.Event) {
 		if e.Type == bloccs.EventRowsCleared {
+			// todo: refactor to somewhere else
+
 			if count, ok := (*e.Payload)["count"]; ok {
 				r.gamesMutex.Lock()
 
@@ -114,6 +131,8 @@ func (r *Room) AddPlayer(p *Player) {
 				default:
 					break
 				}
+
+				r.games[p.ID].Lines += count.(int)
 
 				r.gamesMutex.Unlock()
 			}
@@ -209,12 +228,14 @@ func (r *Room) Start() {
 }
 
 func (r *Room) Stop() {
+	log.Println("stopping room")
+
 	r.gamesMutex.Lock()
+	defer r.gamesMutex.Unlock()
 
 	for _, g := range r.games {
 		g.Stop()
 	}
-	r.gamesMutex.Unlock()
 
 	r.roomWaitGroup.Wait()
 }
