@@ -4,21 +4,23 @@ import (
 	"encoding/json"
 )
 
-type Payload map[string]interface{}
+const ChannelRoom = "room"
 
-// todo: playload types
+type Payload interface{}
 
 type Event struct {
-	Channel string   `json:"channel"`
-	Type    string   `json:"type"`
-	Payload *Payload `json:"payload"`
+	Channel         string  `json:"channel"`
+	OriginalChannel string  `json:"original_channel"`
+	Type            string  `json:"type"`
+	Payload         Payload `json:"payload"`
 }
 
-func New(channelName string, eventType string, payload *Payload) *Event {
+func New(channelName string, eventType string, payload Payload) *Event {
 	return &Event{
-		Channel: channelName,
-		Type:    eventType,
-		Payload: payload,
+		Channel:         channelName,
+		OriginalChannel: channelName,
+		Type:            eventType,
+		Payload:         payload,
 	}
 }
 

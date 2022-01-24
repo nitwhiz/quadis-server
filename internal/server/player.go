@@ -9,11 +9,11 @@ import (
 )
 
 type Player struct {
-	ID        string          `json:"id"`
-	Name      string          `json:"name"`
-	CreateAt  int64           `json:"create_at"`
-	ConnMutex *sync.Mutex     `json:"-"`
-	Conn      *websocket.Conn `json:"-"`
+	ID        string
+	Name      string
+	CreateAt  int64
+	ConnMutex *sync.Mutex
+	Conn      *websocket.Conn
 }
 
 func NewPlayer(conn *websocket.Conn) *Player {

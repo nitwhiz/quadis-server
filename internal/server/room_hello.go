@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bloccs-server/pkg/bloccs"
 	"bloccs-server/pkg/event"
 	"encoding/json"
 	"github.com/gorilla/websocket"
@@ -10,7 +9,7 @@ import (
 )
 
 type HelloResponseMessage struct {
-	Name string `json:"name"`
+	Name string
 }
 
 func (r *Room) Join(conn *websocket.Conn) error {
@@ -86,9 +85,26 @@ func (r *Room) handshakeHello(p *Player) error {
 
 		r.playersMutex.Lock()
 
-		bs, jsonErr := json.Marshal(event.New("none", bloccs.EventHelloAck, &event.Payload{
-			"you":  p,
-			"room": r,
+		var currPlayers []event.PlayerPayload
+
+		for _, p := range r.Players {
+			currPlayers = append(currPlayers, event.PlayerPayload{
+				ID:       p.ID,
+				Name:     p.Name,
+				CreateAt: p.CreateAt,
+			})
+		}
+
+		bs, jsonErr := json.Marshal(event.New("none", event.HelloAck, &event.HelloAckPayload{
+			You: event.PlayerPayload{
+				ID:       p.ID,
+				Name:     p.Name,
+				CreateAt: p.CreateAt,
+			},
+			Room: event.RoomPayload{
+				ID:      r.ID,
+				Players: currPlayers,
+			},
 		}))
 
 		r.playersMutex.Unlock()
@@ -106,7 +122,7 @@ func (r *Room) handshakeHello(p *Player) error {
 		return err
 	}
 
-	bs, err := json.Marshal(event.New("none", bloccs.EventHello, nil))
+	bs, err := json.Marshal(event.New("none", event.Hello, nil))
 
 	if err != nil {
 		return err
