@@ -8,6 +8,14 @@ const CommandHardLock = "P"
 const CommandHold = "H"
 
 func (g *Game) Command(cmd string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	g.FallingPiece.mu.Lock()
+	defer g.FallingPiece.mu.Unlock()
+
+	// todo: piece locking runs into deadlock (?)
+
 	switch cmd {
 	case CommandLeft:
 		g.moveFallingPiece(0, -1, 0)

@@ -3,16 +3,19 @@ package field
 import (
 	"bloccs-server/pkg/event"
 	"bloccs-server/pkg/piece"
+	"sync"
 )
 
 type Field struct {
 	Data             []uint8
 	Width            int
 	Height           int
+	CenterX          int
 	dirty            bool
 	currentBedrock   int
 	requestedBedrock int
 	eventBus         *event.Bus
+	mu               *sync.RWMutex
 }
 
 func New(bus *event.Bus, w int, h int) *Field {
@@ -20,20 +23,28 @@ func New(bus *event.Bus, w int, h int) *Field {
 		Data:             make([]uint8, w*h),
 		Width:            w,
 		Height:           h,
+		CenterX:          w/2 - piece.DataWidth/2,
 		dirty:            true,
 		requestedBedrock: 0,
 		currentBedrock:   0,
 		eventBus:         bus,
+		mu:               &sync.RWMutex{},
 	}
 
 	return &f
 }
 
 func (f *Field) IsDirty() bool {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+
 	return f.dirty
 }
 
 func (f *Field) SetDirty(dirty bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
 	f.dirty = dirty
 }
 
@@ -51,11 +62,10 @@ func putPieceToSlice(buf []uint8, bufWidth int, p *piece.Piece, r int, x int, y 
 	}
 }
 
-func (f *Field) GetCenterX() int {
-	return f.Width/2 - piece.DataWidth/2
-}
-
 func (f *Field) PutPiece(p *piece.Piece, r int, x int, y int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
 	putPieceToSlice(f.Data, f.Width, p, r, x, y)
 
 	f.dirty = true
@@ -70,6 +80,9 @@ func (f *Field) isInBounds(x int, y int) bool {
 }
 
 func (f *Field) CanPutPiece(p *piece.Piece, r int, x int, y int) bool {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+
 	for px := 0; px < piece.DataWidth; px++ {
 		for py := 0; py < piece.DataWidth; py++ {
 			tx := px + x
@@ -84,8 +97,8 @@ func (f *Field) CanPutPiece(p *piece.Piece, r int, x int, y int) bool {
 	return true
 }
 
-// ApplyBedrock returns if there is a bedrock induced game over
-func (f *Field) ApplyBedrock() bool {
+// applyBedrock returns if there is a bedrock induced game over
+func (f *Field) applyBedrock() bool {
 	for f.currentBedrock > f.requestedBedrock {
 		for y := f.Height - 1; y >= 0; y-- {
 			for x := 0; x < f.Width; x++ {
@@ -132,26 +145,35 @@ func (f *Field) ApplyBedrock() bool {
 }
 
 func (f *Field) IncreaseBedrock(delta int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
 	f.requestedBedrock += delta
 
 	if f.requestedBedrock > f.Height {
 		f.requestedBedrock = f.Height
 	}
 
-	f.ApplyBedrock()
+	f.applyBedrock()
 }
 
 func (f *Field) DecreaseBedrock(delta int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
 	f.requestedBedrock -= delta
 
 	if f.requestedBedrock < 0 {
 		f.requestedBedrock = 0
 	}
 
-	f.ApplyBedrock()
+	f.applyBedrock()
 }
 
 func (f *Field) ClearFullRows() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
 	cleared := 0
 
 	for y := 0; y < f.Height; y++ {

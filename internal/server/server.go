@@ -5,6 +5,7 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"log"
 	"net/http"
 	"sync"
 	"time"
@@ -59,19 +60,39 @@ func (s *BloccsServer) GetRoom(id string) *Room {
 func (s *BloccsServer) connect(roomId string, w http.ResponseWriter, r *http.Request) error {
 	room := s.GetRoom(roomId)
 
-	if room == nil {
-		return errors.New("room not found")
-	}
-
 	conn, err := upgrader.Upgrade(w, r, nil)
 
 	if err != nil {
 		return err
 	}
 
-	_ = room.Join(conn)
+	if room == nil {
+		if err = conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "room_has_games_running"), time.Now().Add(time.Second)); err != nil {
+			return err
+		}
 
-	return nil
+		if err = conn.Close(); err != nil {
+			return err
+		}
+
+		return errors.New("room_not_found")
+	}
+
+	if room.AreGamesRunning() {
+		log.Println("games running")
+
+		if err = conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "room_has_games_running"), time.Now().Add(time.Second)); err != nil {
+			return err
+		}
+
+		if err = conn.Close(); err != nil {
+			return err
+		}
+
+		return errors.New("room_has_games_running")
+	}
+
+	return room.Join(conn)
 }
 
 func (s *BloccsServer) startHTTPServer() error {
@@ -136,18 +157,8 @@ func (s *BloccsServer) startHTTPServer() error {
 	r.GET("/rooms/:roomId/socket", func(c *gin.Context) {
 		roomId := c.Param("roomId")
 
-		if roomId == "" {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "room id is empty",
-			})
-
-			return
-		}
-
 		if err := s.connect(roomId, c.Writer, c.Request); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": "unable to connect: " + err.Error(),
-			})
+			c.Abort()
 		}
 	})
 

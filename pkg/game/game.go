@@ -28,6 +28,7 @@ type Game struct {
 	lastUpdate      *time.Time
 	stopChannel     chan bool
 	globalWaitGroup *sync.WaitGroup
+	mu              *sync.RWMutex
 }
 
 func New(bus *event.Bus, rngSeed string, id string) *Game {
@@ -53,6 +54,7 @@ func New(bus *event.Bus, rngSeed string, id string) *Game {
 		lastUpdate:      nil,
 		stopChannel:     make(chan bool),
 		globalWaitGroup: &sync.WaitGroup{},
+		mu:              &sync.RWMutex{},
 	}
 
 	game.nextFallingPiece()
@@ -67,7 +69,9 @@ func (g *Game) Start() {
 
 	now := time.Now()
 
+	g.mu.Lock()
 	g.lastUpdate = &now
+	g.mu.Unlock()
 
 	go func() {
 		defer g.globalWaitGroup.Done()
@@ -96,6 +100,9 @@ func (g *Game) Stop() {
 }
 
 func (g *Game) Update() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
 	if g.IsOver {
 		return
 	}

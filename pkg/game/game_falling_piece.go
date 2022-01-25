@@ -2,6 +2,7 @@ package game
 
 import (
 	"bloccs-server/pkg/piece"
+	"sync"
 	"time"
 )
 
@@ -13,6 +14,7 @@ type FallingPiece struct {
 	Speed     int
 	FallTimer int
 	dirty     bool
+	mu        *sync.RWMutex
 }
 
 func NewFallingPiece() *FallingPiece {
@@ -23,28 +25,22 @@ func NewFallingPiece() *FallingPiece {
 		Speed:     1,
 		FallTimer: 0,
 		dirty:     false,
+		mu:        &sync.RWMutex{},
 	}
 }
 
 func (p *FallingPiece) IsDirty() bool {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
 	return p.dirty
 }
 
 func (p *FallingPiece) SetDirty(dirty bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	p.dirty = dirty
-}
-
-func (p *FallingPiece) Rotate() {
-	p.Rotation = p.Piece.ClampRotation(p.Rotation + 1)
-	p.dirty = true
-}
-
-func (p *FallingPiece) GetData() *[]uint8 {
-	return p.Piece.GetData(p.Rotation)
-}
-
-func (p *FallingPiece) GetDataXY(x int, y int) uint8 {
-	return p.Piece.GetDataXY(p.Rotation, x, y)
 }
 
 func (g *Game) canMoveFallingPiece(dr int, dx int, dy int) bool {
@@ -71,7 +67,7 @@ func (g *Game) moveFallingPiece(dr int, dx int, dy int) {
 }
 
 func (g *Game) initFallingPiece() {
-	g.FallingPiece.X = g.Field.GetCenterX()
+	g.FallingPiece.X = g.Field.CenterX
 	g.FallingPiece.Y = 0
 	g.FallingPiece.Rotation = 0
 
@@ -109,6 +105,7 @@ func (g *Game) lockFallingPiece() int {
 	cleared := g.Field.ClearFullRows()
 
 	g.nextFallingPiece()
+
 	g.holdLock = false
 
 	return cleared
@@ -185,6 +182,4 @@ func (g *Game) hardLockFallingPiece() {
 
 	g.FallingPiece.Y += dy - 1
 	g.FallingPiece.FallTimer = 0
-
-	g.Update()
 }

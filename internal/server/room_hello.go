@@ -15,9 +15,7 @@ type HelloResponseMessage struct {
 func (r *Room) Join(conn *websocket.Conn) error {
 	p := NewPlayer(conn)
 
-	err := r.handshakeHello(p)
-
-	if err != nil {
+	if err := r.handshakeHello(p); err != nil {
 		return err
 	}
 
@@ -68,63 +66,60 @@ func (r *Room) listenForHello(p *Player) (*HelloResponseMessage, error) {
 	return &helloResponse, nil
 }
 
-func (r *Room) handshakeHello(p *Player) error {
-	var err error
-	var helloResponse *HelloResponseMessage
-
-	go func() {
-		helloResponse, err = r.listenForHello(p)
-
-		if err != nil {
-			return
-		}
-
-		p.Name = helloResponse.Name
-
-		r.AddPlayer(p)
-
-		r.playersMutex.Lock()
-
-		var currPlayers []event.PlayerPayload
-
-		for _, p := range r.Players {
-			currPlayers = append(currPlayers, event.PlayerPayload{
-				ID:       p.ID,
-				Name:     p.Name,
-				CreateAt: p.CreateAt,
-			})
-		}
-
-		bs, jsonErr := json.Marshal(event.New("none", event.HelloAck, &event.HelloAckPayload{
-			You: event.PlayerPayload{
-				ID:       p.ID,
-				Name:     p.Name,
-				CreateAt: p.CreateAt,
-			},
-			Room: event.RoomPayload{
-				ID:      r.ID,
-				Players: currPlayers,
-			},
-		}))
-
-		r.playersMutex.Unlock()
-
-		if jsonErr != nil {
-			log.Println("cannot marshal ack message")
-
-			return
-		}
-
-		_ = p.SendMessage(bs)
-	}()
+func (r *Room) sendHello(p *Player) error {
+	bs, err := json.Marshal(event.New("none", event.Hello, nil))
 
 	if err != nil {
 		return err
 	}
 
-	bs, err := json.Marshal(event.New("none", event.Hello, nil))
+	return p.SendMessage(bs)
+}
+
+func (r *Room) handshakeHello(p *Player) error {
+	if err := r.sendHello(p); err != nil {
+		return err
+	}
+
+	helloResponse, err := r.listenForHello(p)
 
 	if err != nil {
+		return err
+	}
+
+	p.Name = helloResponse.Name
+
+	r.AddPlayer(p)
+
+	r.playersMutex.Lock()
+
+	var currPlayers []event.PlayerPayload
+
+	for _, p := range r.Players {
+		currPlayers = append(currPlayers, event.PlayerPayload{
+			ID:       p.ID,
+			Name:     p.Name,
+			CreateAt: p.CreateAt,
+		})
+	}
+
+	bs, err := json.Marshal(event.New("none", event.HelloAck, &event.HelloAckPayload{
+		You: event.PlayerPayload{
+			ID:       p.ID,
+			Name:     p.Name,
+			CreateAt: p.CreateAt,
+		},
+		Room: event.RoomPayload{
+			ID:      r.ID,
+			Players: currPlayers,
+		},
+	}))
+
+	r.playersMutex.Unlock()
+
+	if err != nil {
+		log.Println("cannot marshal ack message")
+
 		return err
 	}
 
