@@ -1,37 +1,34 @@
-package bloccs
+package piece
 
-const PieceBufWidth = 4
+const DataWidth = 4
+
+const Bedrock = 'B'
 
 type Piece struct {
-	Name           uint8 `json:"name"`
-	Rotation       int   `json:"rotation"`
-	rotationStates *[]FieldData
+	Name         uint8
+	rotatedFaces *[][]uint8
 }
 
-func NewPiece(p *Piece) *Piece {
+func New(p *Piece) *Piece {
 	res := *p
 	return &res
 }
 
-func (p *Piece) Rotate() {
-	p.Rotation++
-
-	if p.Rotation >= len(*p.rotationStates) {
-		p.Rotation = 0
-	}
+func (p *Piece) ClampRotation(rot int) int {
+	return rot % len(*p.rotatedFaces)
 }
 
-func (p *Piece) GetData() *FieldData {
-	return &((*p.rotationStates)[p.Rotation])
+func (p *Piece) GetData(rot int) *[]uint8 {
+	return &((*p.rotatedFaces)[p.ClampRotation(rot)])
 }
 
-func (p *Piece) GetDataXY(x int, y int) uint8 {
-	return (*p.rotationStates)[p.Rotation][y*PieceBufWidth+x]
+func (p *Piece) GetDataXY(rot int, x int, y int) uint8 {
+	return (*p.rotatedFaces)[p.ClampRotation(rot)][y*DataWidth+x]
 }
 
-var PieceI = Piece{
+var I = Piece{
 	Name: 'I',
-	rotationStates: &[]FieldData{
+	rotatedFaces: &[][]uint8{
 		{
 			0, 0, 0, 0,
 			0, 0, 0, 0,
@@ -47,9 +44,9 @@ var PieceI = Piece{
 	},
 }
 
-var PieceO = Piece{
+var O = Piece{
 	Name: 'O',
-	rotationStates: &[]FieldData{
+	rotatedFaces: &[][]uint8{
 		{
 			0, 0, 0, 0,
 			0, 'O', 'O', 0,
@@ -59,9 +56,9 @@ var PieceO = Piece{
 	},
 }
 
-var PieceL = Piece{
+var L = Piece{
 	Name: 'L',
-	rotationStates: &[]FieldData{
+	rotatedFaces: &[][]uint8{
 		{
 			0, 0, 0, 0,
 			'L', 'L', 'L', 0,
@@ -89,9 +86,9 @@ var PieceL = Piece{
 	},
 }
 
-var PieceJ = Piece{
+var J = Piece{
 	Name: 'J',
-	rotationStates: &[]FieldData{
+	rotatedFaces: &[][]uint8{
 		{
 			0, 0, 0, 0,
 			'J', 'J', 'J', 0,
@@ -119,9 +116,9 @@ var PieceJ = Piece{
 	},
 }
 
-var PieceS = Piece{
+var S = Piece{
 	Name: 'S',
-	rotationStates: &[]FieldData{
+	rotatedFaces: &[][]uint8{
 		{
 			0, 0, 0, 0,
 			0, 'S', 'S', 0,
@@ -149,9 +146,9 @@ var PieceS = Piece{
 	},
 }
 
-var PieceT = Piece{
+var T = Piece{
 	Name: 'T',
-	rotationStates: &[]FieldData{
+	rotatedFaces: &[][]uint8{
 		{
 			0, 0, 0, 0,
 			'T', 'T', 'T', 0,
@@ -179,9 +176,9 @@ var PieceT = Piece{
 	},
 }
 
-var PieceZ = Piece{
+var Z = Piece{
 	Name: 'Z',
-	rotationStates: &[]FieldData{
+	rotatedFaces: &[][]uint8{
 		{
 			0, 0, 0, 0,
 			'Z', 'Z', 0, 0,
@@ -209,12 +206,12 @@ var PieceZ = Piece{
 	},
 }
 
-var Pieces = []*Piece{
-	&PieceT,
-	&PieceL,
-	&PieceI,
-	&PieceJ,
-	&PieceO,
-	&PieceS,
-	&PieceZ,
+var All = []*Piece{
+	&T,
+	&L,
+	&I,
+	&J,
+	&O,
+	&S,
+	&Z,
 }

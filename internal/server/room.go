@@ -1,9 +1,8 @@
 package server
 
 import (
-	"bloccs-server/pkg/bloccs"
 	"bloccs-server/pkg/event"
-	"fmt"
+	"bloccs-server/pkg/game"
 	"github.com/google/uuid"
 	"log"
 	"sync"
@@ -11,14 +10,15 @@ import (
 )
 
 type Room struct {
-	ID            string             `json:"id"`
-	Players       map[string]*Player `json:"players"`
+	ID            string
+	Players       map[string]*Player
 	playersMutex  *sync.Mutex
-	games         map[string]*bloccs.Game
+	games         map[string]*game.Game
 	gamesMutex    *sync.Mutex
 	eventBus      *event.Bus
 	roomWaitGroup *sync.WaitGroup
 	createAt      time.Time
+	gamesRunning  bool
 }
 
 func NewRoom() *Room {
@@ -27,17 +27,22 @@ func NewRoom() *Room {
 	r := &Room{
 		ID:            uuid.NewString(),
 		Players:       map[string]*Player{},
-		games:         map[string]*bloccs.Game{},
+		games:         map[string]*game.Game{},
 		gamesMutex:    &sync.Mutex{},
 		eventBus:      b,
 		playersMutex:  &sync.Mutex{},
 		roomWaitGroup: &sync.WaitGroup{},
 		createAt:      time.Now(),
+		gamesRunning:  false,
 	}
 
-	b.AddChannel(bloccs.ChannelRoom)
+	b.AddChannel(event.ChannelRoom)
 
 	return r
+}
+
+func (r *Room) AreGamesRunning() bool {
+	return r.gamesRunning
 }
 
 func (r *Room) ShouldClose() bool {
@@ -49,132 +54,6 @@ func (r *Room) ShouldClose() bool {
 	}
 
 	return false
-}
-
-func passEvent(p *Player, e *event.Event) error {
-	bs, err := e.GetAsBytes()
-
-	if err != nil {
-		log.Printf("cannot get bytes of message")
-		return err
-	}
-
-	if err := p.SendMessage(bs); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (r *Room) AddPlayer(p *Player) {
-	r.playersMutex.Lock()
-
-	if _, ok := r.Players[p.ID]; ok {
-		return
-	}
-
-	if len(r.Players) >= 7 {
-		return
-	}
-
-	g := bloccs.NewGame(r.eventBus, r.ID, p.ID)
-
-	r.gamesMutex.Lock()
-	r.games[p.ID] = g
-	r.gamesMutex.Unlock()
-
-	r.Players[p.ID] = p
-
-	r.eventBus.Subscribe(bloccs.ChannelRoom, func(e *event.Event) {
-		if err := passEvent(p, e); err != nil {
-			log.Println("error passing event")
-		}
-	}, g)
-
-	r.eventBus.Subscribe("update/.*", func(e *event.Event) {
-		// todo: send other players updates every X seconds max
-		if err := passEvent(p, e); err != nil {
-			log.Println("error passing event")
-		}
-	}, g)
-
-	r.eventBus.Subscribe(fmt.Sprintf("update/%s", p.ID), func(e *event.Event) {
-		if e.Type == bloccs.EventRowsCleared {
-			// todo: refactor to somewhere else
-
-			if count, ok := (*e.Payload)["count"]; ok {
-				r.gamesMutex.Lock()
-
-				for pId, g := range r.games {
-					if pId != p.ID {
-						g.Field.IncreaseBedrock(count.(int))
-					}
-				}
-
-				r.games[p.ID].Field.DecreaseBedrock(count.(int))
-
-				// todo: refactor
-
-				switch count.(int) {
-				case 1:
-					r.games[p.ID].Score += 60
-					break
-				case 2:
-					r.games[p.ID].Score += 150
-					break
-				case 3:
-					r.games[p.ID].Score += 420
-					break
-				case 4:
-					r.games[p.ID].Score += 2500
-					break
-				default:
-					break
-				}
-
-				r.games[p.ID].Lines += count.(int)
-
-				r.gamesMutex.Unlock()
-			}
-		}
-	}, g)
-
-	r.playersMutex.Unlock()
-
-	// own join is received, too, maybe that's not a problem
-	r.eventBus.Publish(event.New(bloccs.ChannelRoom, bloccs.EventPlayerJoin, &event.Payload{
-		"player": p,
-	}))
-}
-
-func (r *Room) RemovePlayer(p *Player) {
-	r.playersMutex.Lock()
-
-	defer func() {
-		_ = p.Conn.Close()
-		r.playersMutex.Unlock()
-	}()
-
-	if _, ok := r.Players[p.ID]; !ok {
-		return
-	}
-
-	r.gamesMutex.Lock()
-
-	r.eventBus.Unsubscribe(r.games[p.ID])
-
-	if g, ok := r.games[p.ID]; ok {
-		g.Stop()
-		delete(r.games, p.ID)
-	}
-
-	r.gamesMutex.Unlock()
-
-	delete(r.Players, p.ID)
-
-	r.eventBus.Publish(event.New(bloccs.ChannelRoom, bloccs.EventPlayerLeave, &event.Payload{
-		"player": p,
-	}))
 }
 
 func (r *Room) Start() {
@@ -206,15 +85,7 @@ func (r *Room) Start() {
 				r.gamesMutex.Lock()
 
 				if _, ok := r.games[p.ID]; ok {
-					if r.games[p.ID].Command(string(msg)) {
-						if r.games[p.ID].Field.FallingPiece.Dirty {
-							r.games[p.ID].PublishFallingPieceUpdate()
-						}
-
-						if r.games[p.ID].Field.Dirty {
-							r.games[p.ID].PublishFieldUpdate()
-						}
-					}
+					r.games[p.ID].Command(string(msg))
 				}
 
 				r.gamesMutex.Unlock()
@@ -224,8 +95,12 @@ func (r *Room) Start() {
 
 	r.playersMutex.Unlock()
 
-	r.eventBus.Publish(event.New(bloccs.ChannelRoom, bloccs.EventGameStart, nil))
+	r.gamesRunning = true
+
+	r.eventBus.Publish(event.New(event.ChannelRoom, event.GameStart, nil))
 }
+
+// todo: room lifecycle: start, stop, resetGames <- gameovers; game summary screens
 
 func (r *Room) Stop() {
 	log.Println("stopping room")
@@ -238,4 +113,6 @@ func (r *Room) Stop() {
 	}
 
 	r.roomWaitGroup.Wait()
+
+	r.gamesRunning = false
 }

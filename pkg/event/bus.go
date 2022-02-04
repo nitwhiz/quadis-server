@@ -156,9 +156,10 @@ func (b *Bus) Publish(event *Event) {
 	if event.Channel == ChanBroadcast {
 		for n, c := range b.channels {
 			exactEvent := &Event{
-				Channel: n,
-				Type:    event.Type,
-				Payload: event.Payload,
+				Channel:         n,
+				OriginalChannel: event.Channel,
+				Type:            event.Type,
+				Payload:         event.Payload,
 			}
 
 			c <- exactEvent

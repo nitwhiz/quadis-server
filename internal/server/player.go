@@ -9,26 +9,28 @@ import (
 )
 
 type Player struct {
-	ID        string          `json:"id"`
-	Name      string          `json:"name"`
-	CreateAt  int64           `json:"create_at"`
-	ConnMutex *sync.Mutex     `json:"-"`
-	Conn      *websocket.Conn `json:"-"`
+	ID             string
+	Name           string
+	CreateAt       int64
+	Conn           *websocket.Conn
+	connWriteMutex *sync.Mutex
+	connReadMutex  *sync.Mutex
 }
 
 func NewPlayer(conn *websocket.Conn) *Player {
 	return &Player{
-		ID:        uuid.NewString(),
-		Name:      "",
-		CreateAt:  time.Now().UnixMilli(),
-		ConnMutex: &sync.Mutex{},
-		Conn:      conn,
+		ID:             uuid.NewString(),
+		Name:           "",
+		CreateAt:       time.Now().UnixMilli(),
+		Conn:           conn,
+		connWriteMutex: &sync.Mutex{},
+		connReadMutex:  &sync.Mutex{},
 	}
 }
 
 func (p *Player) Ping() {
-	p.ConnMutex.Lock()
-	defer p.ConnMutex.Unlock()
+	p.connWriteMutex.Lock()
+	defer p.connWriteMutex.Unlock()
 
 	_ = p.Conn.SetWriteDeadline(time.Now().Add(time.Second * 10))
 
@@ -38,6 +40,9 @@ func (p *Player) Ping() {
 }
 
 func (p *Player) ReadMessage() ([]byte, error) {
+	p.connReadMutex.Lock()
+	defer p.connReadMutex.Unlock()
+
 	_ = p.Conn.SetReadDeadline(time.Now().Add(time.Second * 5))
 
 	_, msg, err := p.Conn.ReadMessage()
@@ -51,8 +56,8 @@ func (p *Player) ReadMessage() ([]byte, error) {
 }
 
 func (p *Player) SendMessage(data []byte) error {
-	p.ConnMutex.Lock()
-	defer p.ConnMutex.Unlock()
+	p.connWriteMutex.Lock()
+	defer p.connWriteMutex.Unlock()
 
 	_ = p.Conn.SetWriteDeadline(time.Now().Add(time.Second * 5))
 
