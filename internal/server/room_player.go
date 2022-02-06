@@ -2,7 +2,6 @@ package server
 
 import (
 	"bloccs-server/pkg/event"
-	"bloccs-server/pkg/game"
 	"log"
 )
 
@@ -25,6 +24,7 @@ func (r *Room) passEvent(p *Player, e *event.Event) error {
 
 func (r *Room) AddPlayer(p *Player) {
 	r.playersMutex.Lock()
+	defer r.playersMutex.Unlock()
 
 	if _, ok := r.Players[p.ID]; ok {
 		return
@@ -34,27 +34,21 @@ func (r *Room) AddPlayer(p *Player) {
 		return
 	}
 
-	g := game.New(r.eventBus, r.ID, p.ID)
-
-	r.gamesMutex.Lock()
-	r.games[p.ID] = g
-	r.gamesMutex.Unlock()
-
 	r.Players[p.ID] = p
 
 	r.eventBus.Subscribe(event.ChannelRoom, func(e *event.Event) {
 		if err := r.passEvent(p, e); err != nil {
 			log.Println("error passing event")
+			//r.RemovePlayer(p)
 		}
-	}, g)
+	}, p.ID)
 
 	r.eventBus.Subscribe("update/.*", func(e *event.Event) {
 		if err := r.passEvent(p, e); err != nil {
 			log.Println("error passing event")
+			//r.RemovePlayer(p)
 		}
-	}, g)
-
-	r.playersMutex.Unlock()
+	}, p.ID)
 
 	r.eventBus.Publish(event.New(event.ChannelRoom, event.PlayerJoin, &event.PlayerJoinPayload{
 		ID:       p.ID,
@@ -65,26 +59,13 @@ func (r *Room) AddPlayer(p *Player) {
 
 func (r *Room) RemovePlayer(p *Player) {
 	r.playersMutex.Lock()
-
-	defer func() {
-		_ = p.Conn.Close()
-		r.playersMutex.Unlock()
-	}()
+	defer r.playersMutex.Unlock()
 
 	if _, ok := r.Players[p.ID]; !ok {
 		return
 	}
 
-	r.gamesMutex.Lock()
-
-	r.eventBus.Unsubscribe(r.games[p.ID])
-
-	if g, ok := r.games[p.ID]; ok {
-		g.Stop()
-		delete(r.games, p.ID)
-	}
-
-	r.gamesMutex.Unlock()
+	r.eventBus.Unsubscribe(p.ID)
 
 	delete(r.Players, p.ID)
 

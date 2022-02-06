@@ -13,8 +13,8 @@ const ChanExprAll = ".*"
 type Handler func(event *Event)
 
 type Bus struct {
-	handlers          map[string]map[interface{}][]Handler
-	handlersMutex     *sync.Mutex
+	handlers          map[string]map[string][]Handler
+	handlersMutex     *sync.RWMutex
 	running           bool
 	waitGroup         *sync.WaitGroup
 	exprToRex         map[string]*regexp.Regexp
@@ -27,8 +27,8 @@ type Bus struct {
 
 func NewBus() *Bus {
 	return &Bus{
-		handlers:          map[string]map[interface{}][]Handler{},
-		handlersMutex:     &sync.Mutex{},
+		handlers:          map[string]map[string][]Handler{},
+		handlersMutex:     &sync.RWMutex{},
 		running:           true,
 		waitGroup:         &sync.WaitGroup{},
 		exprToRex:         map[string]*regexp.Regexp{},
@@ -86,7 +86,7 @@ func (b *Bus) startChannelListener(n string, c chan *Event) {
 					defer b.waitGroup.Done()
 					b.waitGroup.Add(1)
 
-					b.handlersMutex.Lock()
+					b.handlersMutex.RLock()
 
 					for expr, handlers := range b.handlers {
 						rex := b.exprToRex[expr]
@@ -100,7 +100,7 @@ func (b *Bus) startChannelListener(n string, c chan *Event) {
 						}
 					}
 
-					b.handlersMutex.Unlock()
+					b.handlersMutex.RUnlock()
 				}()
 
 				break
@@ -116,7 +116,7 @@ func (b *Bus) Stop() {
 	b.waitGroup.Wait()
 }
 
-func (b *Bus) Subscribe(channelExpr string, handler Handler, source interface{}) {
+func (b *Bus) Subscribe(channelExpr string, handler Handler, source string) {
 	if _, ok := b.exprToRex[channelExpr]; !ok {
 		rex, _ := regexp.Compile(channelExpr)
 
@@ -124,9 +124,10 @@ func (b *Bus) Subscribe(channelExpr string, handler Handler, source interface{})
 	}
 
 	b.handlersMutex.Lock()
+	defer b.handlersMutex.Unlock()
 
 	if _, ok := b.handlers[channelExpr]; !ok {
-		b.handlers[channelExpr] = map[interface{}][]Handler{}
+		b.handlers[channelExpr] = map[string][]Handler{}
 	}
 
 	if _, ok := b.handlers[channelExpr][source]; !ok {
@@ -134,12 +135,11 @@ func (b *Bus) Subscribe(channelExpr string, handler Handler, source interface{})
 	}
 
 	b.handlers[channelExpr][source] = append(b.handlers[channelExpr][source], handler)
-
-	b.handlersMutex.Unlock()
 }
 
-func (b *Bus) Unsubscribe(source interface{}) {
+func (b *Bus) Unsubscribe(source string) {
 	b.handlersMutex.Lock()
+	defer b.handlersMutex.Unlock()
 
 	for expr, sources := range b.handlers {
 		for src := range sources {
@@ -148,8 +148,6 @@ func (b *Bus) Unsubscribe(source interface{}) {
 			}
 		}
 	}
-
-	b.handlersMutex.Unlock()
 }
 
 func (b *Bus) Publish(event *Event) {

@@ -6,7 +6,9 @@ import (
 	"bloccs-server/pkg/piece"
 	"bloccs-server/pkg/rng"
 	"bloccs-server/pkg/score"
+	"context"
 	"fmt"
+	"github.com/google/uuid"
 	"hash/fnv"
 	"sync"
 	"time"
@@ -26,12 +28,12 @@ type Game struct {
 	Score           *score.Score
 	rpg             *rng.RPG
 	lastUpdate      *time.Time
-	stopChannel     chan bool
 	globalWaitGroup *sync.WaitGroup
 	mu              *sync.RWMutex
+	cancelTickLoop  context.CancelFunc
 }
 
-func New(bus *event.Bus, rngSeed string, id string) *Game {
+func New(bus *event.Bus, rngSeed string) *Game {
 	h := fnv.New32a()
 
 	_, _ = h.Write([]byte(rngSeed))
@@ -39,7 +41,7 @@ func New(bus *event.Bus, rngSeed string, id string) *Game {
 	rpg := rng.NewRPG(int64(h.Sum32()))
 
 	game := &Game{
-		ID:              id,
+		ID:              uuid.NewString(),
 		FallingPiece:    NewFallingPiece(),
 		HoldPiece:       nil,
 		holdLock:        false,
@@ -52,14 +54,14 @@ func New(bus *event.Bus, rngSeed string, id string) *Game {
 		Score:           score.New(),
 		rpg:             rpg,
 		lastUpdate:      nil,
-		stopChannel:     make(chan bool),
 		globalWaitGroup: &sync.WaitGroup{},
 		mu:              &sync.RWMutex{},
+		cancelTickLoop:  nil,
 	}
 
 	game.nextFallingPiece()
 
-	bus.AddChannel(fmt.Sprintf("update/%s", id))
+	bus.AddChannel(fmt.Sprintf("update/%s", game.ID))
 
 	return game
 }
@@ -73,6 +75,10 @@ func (g *Game) Start() {
 	g.lastUpdate = &now
 	g.mu.Unlock()
 
+	ctx, cancel := context.WithCancel(context.Background())
+
+	g.cancelTickLoop = cancel
+
 	go func() {
 		defer g.globalWaitGroup.Done()
 
@@ -83,7 +89,7 @@ func (g *Game) Start() {
 
 		for {
 			select {
-			case <-g.stopChannel:
+			case <-ctx.Done():
 				return
 			case <-ticker.C:
 				g.Update()
@@ -93,7 +99,10 @@ func (g *Game) Start() {
 }
 
 func (g *Game) Stop() {
-	close(g.stopChannel)
+	if g.cancelTickLoop != nil {
+		g.cancelTickLoop()
+	}
+
 	g.globalWaitGroup.Wait()
 
 	g.EventBus.RemoveChannel(fmt.Sprintf("update/%s", g.ID))

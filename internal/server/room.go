@@ -4,6 +4,7 @@ import (
 	"bloccs-server/pkg/event"
 	"bloccs-server/pkg/game"
 	"github.com/google/uuid"
+	"github.com/gorilla/websocket"
 	"log"
 	"sync"
 	"time"
@@ -13,8 +14,6 @@ type Room struct {
 	ID            string
 	Players       map[string]*Player
 	playersMutex  *sync.Mutex
-	games         map[string]*game.Game
-	gamesMutex    *sync.Mutex
 	eventBus      *event.Bus
 	roomWaitGroup *sync.WaitGroup
 	createAt      time.Time
@@ -28,8 +27,6 @@ func NewRoom() *Room {
 	r := &Room{
 		ID:            uuid.NewString(),
 		Players:       map[string]*Player{},
-		games:         map[string]*game.Game{},
-		gamesMutex:    &sync.Mutex{},
 		eventBus:      b,
 		playersMutex:  &sync.Mutex{},
 		roomWaitGroup: &sync.WaitGroup{},
@@ -41,6 +38,21 @@ func NewRoom() *Room {
 	b.AddChannel(event.ChannelRoom)
 
 	return r
+}
+
+func (r *Room) Join(conn *websocket.Conn) error {
+	p := NewPlayer(conn, game.New(r.eventBus, r.ID))
+
+	if err := r.handshakeHello(p); err != nil {
+		return err
+	}
+
+	r.AddPlayer(p)
+	p.Listen(func() {
+		r.RemovePlayer(p)
+	})
+
+	return nil
 }
 
 func (r *Room) AreGamesRunning() bool {
@@ -59,40 +71,10 @@ func (r *Room) ShouldClose() bool {
 }
 
 func (r *Room) Start() {
-	r.gamesMutex.Lock()
-
-	for _, g := range r.games {
-		g.Start()
-	}
-
-	r.gamesMutex.Unlock()
-
 	r.playersMutex.Lock()
 
 	for _, player := range r.Players {
-		go func(p *Player) {
-			defer r.RemovePlayer(p)
-			defer r.roomWaitGroup.Done()
-
-			r.roomWaitGroup.Add(1)
-
-			for {
-				msg, err := p.ReadMessage()
-
-				if err != nil {
-					log.Println("error reading message", err)
-					return
-				}
-
-				r.gamesMutex.Lock()
-
-				if _, ok := r.games[p.ID]; ok {
-					r.games[p.ID].Command(string(msg))
-				}
-
-				r.gamesMutex.Unlock()
-			}
-		}(player)
+		player.StartGame()
 	}
 
 	r.playersMutex.Unlock()
@@ -109,11 +91,11 @@ func (r *Room) Stop() {
 
 	log.Println("stopping room")
 
-	r.gamesMutex.Lock()
-	defer r.gamesMutex.Unlock()
+	r.playersMutex.Lock()
+	defer r.playersMutex.Unlock()
 
-	for _, g := range r.games {
-		g.Stop()
+	for _, p := range r.Players {
+		p.StopGame()
 	}
 
 	r.roomWaitGroup.Wait()

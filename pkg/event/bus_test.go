@@ -18,15 +18,15 @@ func TestBus_BusGeneric(t *testing.T) {
 
 	b.Subscribe("test/123", func(e *Event) {
 		handler1Calls++
-	}, nil)
+	}, "test")
 
 	b.Subscribe("test/456", func(e *Event) {
 		handler2Calls++
-	}, nil)
+	}, "test")
 
 	b.Subscribe("test/.*", func(e *Event) {
 		handler3Calls++
-	}, nil)
+	}, "test")
 
 	b.Publish(New("test/123", "test", nil))
 	b.Publish(New("test/456", "test", nil))
@@ -36,7 +36,7 @@ func TestBus_BusGeneric(t *testing.T) {
 
 	b.Subscribe("test/.*", func(e *Event) {
 		handler4Calls++
-	}, nil)
+	}, "test")
 
 	b.Publish(New("test/456", "test", nil))
 
@@ -73,11 +73,11 @@ func TestBus_BusBroadcast(t *testing.T) {
 
 	b.Subscribe("test/123", func(e *Event) {
 		handler1Calls++
-	}, nil)
+	}, "test")
 
 	b.Subscribe("test/456", func(e *Event) {
 		handler2Calls++
-	}, nil)
+	}, "test")
 
 	b.Publish(New("*", "test", nil))
 	b.Publish(New("*", "test", nil))
@@ -96,9 +96,6 @@ func TestBus_BusBroadcast(t *testing.T) {
 }
 
 func TestBus_Unsubscribe(t *testing.T) {
-	source1 := struct{}{}
-	source2 := struct{}{}
-
 	handler1Calls := 0
 	handler2Calls := 0
 
@@ -109,11 +106,11 @@ func TestBus_Unsubscribe(t *testing.T) {
 
 	b.Subscribe("test/123", func(e *Event) {
 		handler1Calls++
-	}, &source1)
+	}, "test1")
 
 	b.Subscribe("test/456", func(e *Event) {
 		handler2Calls++
-	}, &source2)
+	}, "test2")
 
 	b.Publish(New("test/123", "test", nil))
 	b.Publish(New("test/456", "test", nil))
@@ -121,7 +118,7 @@ func TestBus_Unsubscribe(t *testing.T) {
 	// give channels some time to be received
 	time.Sleep(time.Millisecond * 250)
 
-	b.Unsubscribe(&source2)
+	b.Unsubscribe("test2")
 
 	b.Publish(New("test/456", "test", nil))
 

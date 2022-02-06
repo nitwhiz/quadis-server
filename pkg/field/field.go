@@ -56,6 +56,7 @@ func putPieceToSlice(buf []uint8, bufWidth int, p *piece.Piece, r int, x int, y 
 			if d != 0 {
 				id := (py+y)*bufWidth + (px + x)
 
+				// todo(DATA RACE): marshalling Field.data happens async to this
 				buf[id] = d
 			}
 		}
