@@ -19,6 +19,8 @@ func (r *Room) Join(conn *websocket.Conn) error {
 		return err
 	}
 
+	r.AddPlayer(p)
+
 	p.Conn.SetPongHandler(func(string) error {
 		_ = p.Conn.SetReadDeadline(time.Now().Add(time.Second * 3))
 		return nil
@@ -88,8 +90,6 @@ func (r *Room) handshakeHello(p *Player) error {
 	}
 
 	p.Name = helloResponse.Name
-
-	r.AddPlayer(p)
 
 	r.playersMutex.Lock()
 
