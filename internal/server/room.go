@@ -19,6 +19,7 @@ type Room struct {
 	roomWaitGroup *sync.WaitGroup
 	createAt      time.Time
 	gamesRunning  bool
+	isStopping    bool
 }
 
 func NewRoom() *Room {
@@ -34,6 +35,7 @@ func NewRoom() *Room {
 		roomWaitGroup: &sync.WaitGroup{},
 		createAt:      time.Now(),
 		gamesRunning:  false,
+		isStopping:    false,
 	}
 
 	b.AddChannel(event.ChannelRoom)
@@ -49,7 +51,7 @@ func (r *Room) ShouldClose() bool {
 	r.playersMutex.Lock()
 	defer r.playersMutex.Unlock()
 
-	if len(r.Players) == 0 && time.Since(r.createAt) > time.Minute*15 {
+	if !r.isStopping && len(r.Players) == 0 && time.Since(r.createAt) > time.Minute*15 {
 		return true
 	}
 
@@ -103,6 +105,8 @@ func (r *Room) Start() {
 // todo: room lifecycle: start, stop, resetGames <- gameovers; game summary screens
 
 func (r *Room) Stop() {
+	r.isStopping = true
+
 	log.Println("stopping room")
 
 	r.gamesMutex.Lock()
@@ -113,6 +117,5 @@ func (r *Room) Stop() {
 	}
 
 	r.roomWaitGroup.Wait()
-
 	r.gamesRunning = false
 }

@@ -2,6 +2,7 @@ package server
 
 import (
 	"errors"
+	"fmt"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -180,14 +181,22 @@ func (s *BloccsServer) Start() error {
 			select {
 			case <-s.systemStopChannel:
 				return
-			case <-time.After(time.Second):
+			case <-time.After(time.Minute):
 				s.roomsMutex.Lock()
 
-				for _, r := range s.rooms {
+				runningRooms := map[string]*Room{}
+
+				for rid, r := range s.rooms {
 					if r.ShouldClose() {
 						r.Stop()
+					} else {
+						runningRooms[rid] = r
 					}
 				}
+
+				log.Println(fmt.Sprintf("ROOMS: %d/%d", len(runningRooms), len(s.rooms)))
+
+				s.rooms = runningRooms
 
 				s.roomsMutex.Unlock()
 			}
