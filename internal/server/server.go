@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"github.com/gin-contrib/cors"
@@ -19,18 +20,18 @@ var upgrader = websocket.Upgrader{
 }
 
 type BloccsServer struct {
-	rooms             map[string]*Room
-	roomsMutex        *sync.Mutex
-	systemWaitGroup   *sync.WaitGroup
-	systemStopChannel chan bool
+	rooms            map[string]*Room
+	roomsMutex       *sync.Mutex
+	systemWaitGroup  *sync.WaitGroup
+	systemCancelFunc context.CancelFunc
 }
 
 func NewBloccsServer() *BloccsServer {
 	return &BloccsServer{
-		rooms:             map[string]*Room{},
-		roomsMutex:        &sync.Mutex{},
-		systemWaitGroup:   &sync.WaitGroup{},
-		systemStopChannel: make(chan bool),
+		rooms:            map[string]*Room{},
+		roomsMutex:       &sync.Mutex{},
+		systemWaitGroup:  &sync.WaitGroup{},
+		systemCancelFunc: nil,
 	}
 }
 
@@ -167,19 +168,25 @@ func (s *BloccsServer) startHTTPServer() error {
 }
 
 func (s *BloccsServer) Stop() {
-	close(s.systemStopChannel)
+	if s.systemCancelFunc != nil {
+		s.systemCancelFunc()
+	}
 
 	s.systemWaitGroup.Wait()
 }
 
 func (s *BloccsServer) Start() error {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	s.systemCancelFunc = cancel
+
 	go func() {
 		s.systemWaitGroup.Add(1)
 		defer s.systemWaitGroup.Done()
 
 		for {
 			select {
-			case <-s.systemStopChannel:
+			case <-ctx.Done():
 				return
 			case <-time.After(time.Minute):
 				s.roomsMutex.Lock()

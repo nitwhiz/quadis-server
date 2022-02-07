@@ -3,49 +3,11 @@ package server
 import (
 	"bloccs-server/pkg/event"
 	"encoding/json"
-	"github.com/gorilla/websocket"
 	"log"
-	"time"
 )
 
 type HelloResponseMessage struct {
 	Name string
-}
-
-func (r *Room) Join(conn *websocket.Conn) error {
-	p := NewPlayer(conn)
-
-	if err := r.handshakeHello(p); err != nil {
-		return err
-	}
-
-	r.AddPlayer(p)
-
-	p.Conn.SetPongHandler(func(string) error {
-		_ = p.Conn.SetReadDeadline(time.Now().Add(time.Second * 3))
-		return nil
-	})
-
-	go func() {
-		pingTicker := time.NewTicker(time.Second * 2)
-
-		defer func() {
-			log.Println("removing player")
-
-			pingTicker.Stop()
-			r.RemovePlayer(p)
-		}()
-
-		for {
-			select {
-			case <-pingTicker.C:
-				p.Ping()
-				break
-			}
-		}
-	}()
-
-	return nil
 }
 
 func (r *Room) listenForHello(p *Player) (*HelloResponseMessage, error) {
@@ -93,7 +55,7 @@ func (r *Room) handshakeHello(p *Player) error {
 
 	r.playersMutex.Lock()
 
-	var currPlayers []event.PlayerPayload
+	currPlayers := make([]event.PlayerPayload, 0)
 
 	for _, p := range r.Players {
 		currPlayers = append(currPlayers, event.PlayerPayload{
@@ -102,6 +64,8 @@ func (r *Room) handshakeHello(p *Player) error {
 			CreateAt: p.CreateAt,
 		})
 	}
+
+	r.playersMutex.Unlock()
 
 	bs, err := json.Marshal(event.New("none", event.HelloAck, &event.HelloAckPayload{
 		You: event.PlayerPayload{
@@ -114,8 +78,6 @@ func (r *Room) handshakeHello(p *Player) error {
 			Players: currPlayers,
 		},
 	}))
-
-	r.playersMutex.Unlock()
 
 	if err != nil {
 		log.Println("cannot marshal ack message")
