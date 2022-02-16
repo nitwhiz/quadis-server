@@ -10,6 +10,9 @@ func (g *Game) publish(e string, p event.Payload) {
 }
 
 func (g *Game) publishFieldUpdate() {
+	g.Field.RLock()
+	defer g.Field.RUnlock()
+
 	g.publish(event.UpdateField, &event.UpdateFieldPayload{
 		Width:  g.Field.Width,
 		Height: g.Field.Height,
