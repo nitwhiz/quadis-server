@@ -3,6 +3,7 @@ package server
 import (
 	"bloccs-server/pkg/event"
 	"bloccs-server/pkg/game"
+	"bloccs-server/pkg/score"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"log"
@@ -38,6 +39,13 @@ func NewRoom() *Room {
 	b.AddChannel(event.ChannelRoom)
 
 	return r
+}
+
+func (r *Room) GetPlayerCount() int {
+	r.playersMutex.Lock()
+	defer r.playersMutex.Unlock()
+
+	return len(r.Players)
 }
 
 func (r *Room) Join(conn *websocket.Conn) error {
@@ -84,7 +92,34 @@ func (r *Room) Start() {
 	r.eventBus.Publish(event.New(event.ChannelRoom, event.GameStart, nil))
 }
 
-// todo: room lifecycle: start, stop, resetGames <- gameovers; game summary screens
+func (r *Room) GetScores() map[string]*score.Score {
+	r.playersMutex.Lock()
+	defer r.playersMutex.Unlock()
+
+	scores := map[string]*score.Score{}
+
+	for _, p := range r.Players {
+		s, l := p.game.GetScore()
+
+		playerScore := score.New()
+
+		playerScore.Score = s
+		playerScore.Lines = l
+
+		scores[p.ID] = playerScore
+	}
+
+	return scores
+}
+
+func (r *Room) ResetGames() {
+	r.playersMutex.Lock()
+	defer r.playersMutex.Unlock()
+
+	for _, p := range r.Players {
+		p.ResetGame()
+	}
+}
 
 func (r *Room) Stop() {
 	r.isStopping = true

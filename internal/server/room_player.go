@@ -39,14 +39,14 @@ func (r *Room) AddPlayer(p *Player) {
 	r.eventBus.Subscribe(event.ChannelRoom, func(e *event.Event) {
 		if err := r.passEvent(p, e); err != nil {
 			log.Println("error passing event")
-			//r.RemovePlayer(p)
+			r.RemovePlayer(p)
 		}
 	}, p.ID)
 
 	r.eventBus.Subscribe("update/.*", func(e *event.Event) {
 		if err := r.passEvent(p, e); err != nil {
 			log.Println("error passing event")
-			//r.RemovePlayer(p)
+			r.RemovePlayer(p)
 		}
 	}, p.ID)
 

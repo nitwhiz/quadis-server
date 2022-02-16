@@ -39,6 +39,10 @@ func NewPlayer(conn *websocket.Conn, game *game.Game) *Player {
 	}
 }
 
+func (p *Player) ResetGame() {
+	p.game.Reset()
+}
+
 func (p *Player) StopGame() {
 	p.game.Stop()
 }
@@ -49,8 +53,6 @@ func (p *Player) StartGame() {
 
 func (p *Player) Listen(stopCallback StopCallbackFunc) {
 	p.Conn.SetPongHandler(func(string) error {
-		log.Println("pong, read deadline 5 secs")
-
 		return p.Conn.SetReadDeadline(time.Now().Add(time.Second * 10))
 	})
 

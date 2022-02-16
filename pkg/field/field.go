@@ -34,6 +34,24 @@ func New(bus *event.Bus, w int, h int) *Field {
 	return &f
 }
 
+func (f *Field) Reset() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.Data = make([]uint8, f.Width*f.Height)
+	f.dirty = true
+	f.requestedBedrock = 0
+	f.currentBedrock = 0
+}
+
+func (f *Field) RLock() {
+	f.mu.RLock()
+}
+
+func (f *Field) RUnlock() {
+	f.mu.RUnlock()
+}
+
 func (f *Field) IsDirty() bool {
 	f.mu.RLock()
 	defer f.mu.RUnlock()

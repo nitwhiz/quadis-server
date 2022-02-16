@@ -192,16 +192,19 @@ func (s *BloccsServer) Start() error {
 				s.roomsMutex.Lock()
 
 				runningRooms := map[string]*Room{}
+				playerCount := 0
 
 				for rid, r := range s.rooms {
 					if r.ShouldClose() {
 						r.Stop()
 					} else {
 						runningRooms[rid] = r
+						playerCount += r.GetPlayerCount()
 					}
 				}
 
 				log.Println(fmt.Sprintf("ROOMS: %d/%d", len(runningRooms), len(s.rooms)))
+				log.Println(fmt.Sprintf("PLAYERS: %d", playerCount))
 
 				s.rooms = runningRooms
 

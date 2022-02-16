@@ -66,14 +66,21 @@ func New(bus *event.Bus, rngSeed string) *Game {
 	return game
 }
 
+func (g *Game) GetScore() (int, int) {
+	g.Score.RLock()
+	defer g.Score.RUnlock()
+
+	return g.Score.Score, g.Score.Lines
+}
+
 func (g *Game) Start() {
 	g.globalWaitGroup.Add(1)
 
+	g.rpg.NextBag()
+
 	now := time.Now()
 
-	g.mu.Lock()
 	g.lastUpdate = &now
-	g.mu.Unlock()
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -96,6 +103,23 @@ func (g *Game) Start() {
 			}
 		}
 	}()
+}
+
+func (g *Game) Reset() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	g.HoldPiece = nil
+	g.holdLock = false
+	g.holdDirty = false
+	g.NextPiece = nil
+	g.nextDirty = false
+	g.IsOver = false
+	g.lastUpdate = nil
+	g.cancelTickLoop = nil
+
+	g.Score.Reset()
+	g.Field.Reset()
 }
 
 func (g *Game) Stop() {
