@@ -47,8 +47,8 @@ func (p *Player) StopGame() {
 	p.game.Stop()
 }
 
-func (p *Player) StartGame() {
-	p.game.Start()
+func (p *Player) StartGame(gameOverHandler func()) {
+	p.game.Start(gameOverHandler)
 }
 
 func (p *Player) Listen(stopCallback StopCallbackFunc) {

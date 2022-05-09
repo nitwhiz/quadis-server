@@ -7,6 +7,7 @@ import (
 
 func (r *Room) passEvent(p *Player, e *event.Event) error {
 	// todo: throttle events from other players; only send specific events instantly
+	// todo: this data-races if event body is something not locked - may be irrelevant though
 
 	bs, err := e.GetAsBytes()
 
@@ -44,6 +45,10 @@ func (r *Room) AddPlayer(p *Player) {
 	}, p.ID)
 
 	r.eventBus.Subscribe("update/.*", func(e *event.Event) {
+		if e.Type == event.GameOver {
+
+		}
+
 		if err := r.passEvent(p, e); err != nil {
 			log.Println("error passing event")
 			r.RemovePlayer(p)

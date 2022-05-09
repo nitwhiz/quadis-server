@@ -82,3 +82,7 @@ type UpdateHoldPiecePayload struct {
 type PlayerJoinPayload = PlayerPayload
 
 type PlayerLeavePayload = PlayerPayload
+
+type PlayerGameOverPayload = struct {
+	Player PlayerPayload `json:"player"`
+}

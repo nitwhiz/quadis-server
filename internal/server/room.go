@@ -82,7 +82,20 @@ func (r *Room) Start() {
 	r.playersMutex.Lock()
 
 	for _, player := range r.Players {
-		player.StartGame()
+		// todo: rewrite
+		player.StartGame(func() {
+			r.eventBus.Publish(&event.Event{
+				Channel: event.ChannelRoom,
+				Type:    event.GameOver,
+				Payload: &event.PlayerGameOverPayload{
+					Player: event.PlayerPayload{
+						ID:       player.ID,
+						Name:     player.Name,
+						CreateAt: player.CreateAt,
+					},
+				},
+			})
+		})
 	}
 
 	r.playersMutex.Unlock()

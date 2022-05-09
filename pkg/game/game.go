@@ -73,7 +73,7 @@ func (g *Game) GetScore() (int, int) {
 	return g.Score.Score, g.Score.Lines
 }
 
-func (g *Game) Start() {
+func (g *Game) Start(gameOverHandler func()) {
 	g.globalWaitGroup.Add(1)
 
 	g.rpg.NextBag()
@@ -99,7 +99,7 @@ func (g *Game) Start() {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				g.Update()
+				g.Update(gameOverHandler)
 			}
 		}
 	}()
@@ -132,7 +132,7 @@ func (g *Game) Stop() {
 	g.EventBus.RemoveChannel(fmt.Sprintf("update/%s", g.ID))
 }
 
-func (g *Game) Update() {
+func (g *Game) Update(gameOverHandler func()) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
@@ -175,7 +175,7 @@ func (g *Game) Update() {
 
 		if gameOver {
 			g.IsOver = true
-			g.publishGameOver()
+			gameOverHandler()
 		}
 	}
 

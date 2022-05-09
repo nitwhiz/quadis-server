@@ -9,18 +9,16 @@ const ChannelRoom = "room"
 type Payload interface{}
 
 type Event struct {
-	Channel         string  `json:"channel"`
-	OriginalChannel string  `json:"original_channel"`
-	Type            string  `json:"type"`
-	Payload         Payload `json:"payload"`
+	Channel string  `json:"channel"`
+	Type    string  `json:"type"`
+	Payload Payload `json:"payload"`
 }
 
 func New(channelName string, eventType string, payload Payload) *Event {
 	return &Event{
-		Channel:         channelName,
-		OriginalChannel: channelName,
-		Type:            eventType,
-		Payload:         payload,
+		Channel: channelName,
+		Type:    eventType,
+		Payload: payload,
 	}
 }
 

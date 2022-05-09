@@ -47,7 +47,3 @@ func (g *Game) publishScoreUpdate() {
 		Lines: g.Score.Lines,
 	})
 }
-
-func (g *Game) publishGameOver() {
-	g.publish(event.GameOver, nil)
-}
