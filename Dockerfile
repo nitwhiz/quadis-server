@@ -1,13 +1,17 @@
-FROM golang:1.18.0-bullseye as builder
+FROM golang:1.18.1-buster as builder
 
-COPY ./ /tmp/build
+WORKDIR /app
 
-RUN cd /tmp/build && CGO_ENABLED=0 go build ./cmd/server
+COPY ./ /app
 
-FROM alpine:3.14.0
+RUN CGO_ENABLED=0 go build -o ./build/server ./cmd/server
 
-COPY --from=builder /tmp/build/server /app/server
+FROM alpine:3.15.4
+
+LABEL org.opencontainers.image.source="https://github.com/nitwhiz/bloccs-server"
+
+COPY --from=builder /app/build/server /server
 
 EXPOSE 7000
 
-CMD [ "/app/server" ]
+CMD [ "/server" ]
