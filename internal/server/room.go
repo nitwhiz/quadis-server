@@ -1,9 +1,9 @@
 package server
 
 import (
+	"bloccs-server/pkg/bloccs"
 	"bloccs-server/pkg/event"
-	"bloccs-server/pkg/game"
-	"bloccs-server/pkg/score"
+	"fmt"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"log"
@@ -12,33 +12,43 @@ import (
 )
 
 type Room struct {
-	ID            string
-	Players       map[string]*Player
-	playersMutex  *sync.Mutex
-	eventBus      *event.Bus
-	roomWaitGroup *sync.WaitGroup
-	createAt      time.Time
-	gamesRunning  bool
-	isStopping    bool
+	Id                   string                  `json:"id"`
+	Players              map[string]*Player      `json:"players"`
+	Games                map[string]*bloccs.Game `json:"games"`
+	eventHandlerIds      map[string]int
+	eventHandlerIdsMutex *sync.Mutex
+	playersMutex         *sync.Mutex
+	gamesMutex           *sync.Mutex
+	eventBus             *event.Bus
+	createAt             time.Time
+	gamesRunning         bool
+	isStopping           bool
 }
 
 func NewRoom() *Room {
 	b := event.NewBus()
 
+	b.Start()
+
 	r := &Room{
-		ID:            uuid.NewString(),
-		Players:       map[string]*Player{},
-		eventBus:      b,
-		playersMutex:  &sync.Mutex{},
-		roomWaitGroup: &sync.WaitGroup{},
-		createAt:      time.Now(),
-		gamesRunning:  false,
-		isStopping:    false,
+		Id:                   uuid.NewString(),
+		Players:              map[string]*Player{},
+		playersMutex:         &sync.Mutex{},
+		Games:                map[string]*bloccs.Game{},
+		gamesMutex:           &sync.Mutex{},
+		eventHandlerIds:      map[string]int{},
+		eventHandlerIdsMutex: &sync.Mutex{},
+		eventBus:             b,
+		createAt:             time.Now(),
+		gamesRunning:         false,
+		isStopping:           false,
 	}
 
-	b.AddChannel(event.ChannelRoom)
-
 	return r
+}
+
+func (r *Room) GetId() string {
+	return r.Id
 }
 
 func (r *Room) GetPlayerCount() int {
@@ -49,15 +59,24 @@ func (r *Room) GetPlayerCount() int {
 }
 
 func (r *Room) Join(conn *websocket.Conn) error {
-	p := NewPlayer(conn, game.New(r.eventBus, r.ID))
+	g := bloccs.NewGame(r.eventBus, &bloccs.GameSettings{
+		FallingPieceSpeed: 1,
+		Seed:              r.Id,
+		FieldWidth:        10,
+		FieldHeight:       20,
+	})
+	p := NewPlayer(conn, g.GetId(), g.GetCommandChannel())
+
+	fmt.Println("new player joining")
 
 	if err := r.handshakeHello(p); err != nil {
 		return err
 	}
 
-	r.AddPlayer(p)
+	r.RegisterPlayer(p, g)
+
 	p.Listen(func() {
-		r.RemovePlayer(p)
+		r.RemoveGame(g)
 	})
 
 	return nil
@@ -79,73 +98,27 @@ func (r *Room) ShouldClose() bool {
 }
 
 func (r *Room) Start() {
-	r.playersMutex.Lock()
+	r.gamesMutex.Lock()
+	defer r.gamesMutex.Unlock()
 
-	for _, player := range r.Players {
-		// todo: rewrite
-		player.StartGame(func() {
-			r.eventBus.Publish(&event.Event{
-				Channel: event.ChannelRoom,
-				Type:    event.GameOver,
-				Payload: &event.PlayerGameOverPayload{
-					Player: event.PlayerPayload{
-						ID:       player.ID,
-						Name:     player.Name,
-						CreateAt: player.CreateAt,
-					},
-				},
-			})
-		})
+	for _, g := range r.Games {
+		g.Start()
 	}
-
-	r.playersMutex.Unlock()
 
 	r.gamesRunning = true
-
-	r.eventBus.Publish(event.New(event.ChannelRoom, event.GameStart, nil))
-}
-
-func (r *Room) GetScores() map[string]*score.Score {
-	r.playersMutex.Lock()
-	defer r.playersMutex.Unlock()
-
-	scores := map[string]*score.Score{}
-
-	for _, p := range r.Players {
-		s, l := p.game.GetScore()
-
-		playerScore := score.New()
-
-		playerScore.Score = s
-		playerScore.Lines = l
-
-		scores[p.ID] = playerScore
-	}
-
-	return scores
-}
-
-func (r *Room) ResetGames() {
-	r.playersMutex.Lock()
-	defer r.playersMutex.Unlock()
-
-	for _, p := range r.Players {
-		p.ResetGame()
-	}
 }
 
 func (r *Room) Stop() {
 	r.isStopping = true
 
-	log.Println("stopping room")
+	log.Printf("stopping room %s ...\n", r.Id)
 
-	r.playersMutex.Lock()
+	r.gamesMutex.Lock()
 	defer r.playersMutex.Unlock()
 
-	for _, p := range r.Players {
-		p.StopGame()
+	for _, g := range r.Games {
+		g.Stop()
 	}
 
-	r.roomWaitGroup.Wait()
 	r.gamesRunning = false
 }

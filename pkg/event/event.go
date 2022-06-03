@@ -4,19 +4,23 @@ import (
 	"encoding/json"
 )
 
-const ChannelRoom = "room"
+type Source interface {
+	GetId() string
+}
+
+type Type string
 
 type Payload interface{}
 
 type Event struct {
-	Channel string  `json:"channel"`
-	Type    string  `json:"type"`
+	Source  Source  `json:"source"`
+	Type    Type    `json:"type"`
 	Payload Payload `json:"payload"`
 }
 
-func New(channelName string, eventType string, payload Payload) *Event {
+func New(eventType Type, source Source, payload Payload) *Event {
 	return &Event{
-		Channel: channelName,
+		Source:  source,
 		Type:    eventType,
 		Payload: payload,
 	}

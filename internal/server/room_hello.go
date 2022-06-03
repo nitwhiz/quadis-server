@@ -3,11 +3,19 @@ package server
 import (
 	"bloccs-server/pkg/event"
 	"encoding/json"
-	"log"
+	"errors"
+	"fmt"
 )
 
+const EventHello = "hello"
+const EventHelloAck = "hello_ack"
+
 type HelloResponseMessage struct {
-	Name string
+	Name string `json:"name"`
+}
+
+type HelloAckPayload struct {
+	Player *Player `json:"player"`
 }
 
 func (r *Room) listenForHello(p *Player) (*HelloResponseMessage, error) {
@@ -22,25 +30,20 @@ func (r *Room) listenForHello(p *Player) (*HelloResponseMessage, error) {
 	err = json.Unmarshal(msg, &helloResponse)
 
 	if err != nil || helloResponse.Name == "" {
-		log.Println("handshakeHello: invalid hello response. listening again.", helloResponse)
-
-		return r.listenForHello(p)
+		return nil, errors.New("invalid hello response")
 	}
 
 	return &helloResponse, nil
 }
 
 func (r *Room) sendHello(p *Player) error {
-	bs, err := json.Marshal(event.New("none", event.Hello, nil))
-
-	if err != nil {
-		return err
-	}
-
-	return p.SendMessage(bs)
+	fmt.Println("sending hello")
+	return r.sendEventToPlayer(event.New(EventHello, nil, nil), p)
 }
 
 func (r *Room) handshakeHello(p *Player) error {
+	fmt.Println("handshaking")
+
 	if err := r.sendHello(p); err != nil {
 		return err
 	}
@@ -53,37 +56,5 @@ func (r *Room) handshakeHello(p *Player) error {
 
 	p.Name = helloResponse.Name
 
-	r.playersMutex.Lock()
-
-	currPlayers := make([]event.PlayerPayload, 0)
-
-	for _, p := range r.Players {
-		currPlayers = append(currPlayers, event.PlayerPayload{
-			ID:       p.ID,
-			Name:     p.Name,
-			CreateAt: p.CreateAt,
-		})
-	}
-
-	r.playersMutex.Unlock()
-
-	bs, err := json.Marshal(event.New("none", event.HelloAck, &event.HelloAckPayload{
-		You: event.PlayerPayload{
-			ID:       p.ID,
-			Name:     p.Name,
-			CreateAt: p.CreateAt,
-		},
-		Room: event.RoomPayload{
-			ID:      r.ID,
-			Players: currPlayers,
-		},
-	}))
-
-	if err != nil {
-		log.Println("cannot marshal ack message")
-
-		return err
-	}
-
-	return p.SendMessage(bs)
+	return r.sendEventToPlayer(event.New(EventHelloAck, r, &HelloAckPayload{Player: p}), p)
 }

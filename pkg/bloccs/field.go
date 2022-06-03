@@ -1,30 +1,31 @@
-package field
+package bloccs
 
 import (
 	"bloccs-server/pkg/event"
-	"bloccs-server/pkg/piece"
 	"sync"
 )
 
+const EventFieldUpdate = "field_update"
+
 type Field struct {
-	Data             []uint8
-	Width            int
-	Height           int
-	CenterX          int
-	dirty            bool
+	GameId           string    `json:"gameId"`
+	Data             PieceData `json:"data"`
+	Width            int       `json:"width"`
+	Height           int       `json:"height"`
+	CenterX          int       `json:"-"`
 	currentBedrock   int
 	requestedBedrock int
 	eventBus         *event.Bus
 	mu               *sync.RWMutex
 }
 
-func New(bus *event.Bus, w int, h int) *Field {
+func NewField(bus *event.Bus, id string, w int, h int) *Field {
 	f := Field{
-		Data:             make([]uint8, w*h),
+		GameId:           id,
+		Data:             make(PieceData, w*h),
 		Width:            w,
 		Height:           h,
-		CenterX:          w/2 - piece.DataWidth/2,
-		dirty:            true,
+		CenterX:          w/2 - pieceDataWidth/2,
 		requestedBedrock: 0,
 		currentBedrock:   0,
 		eventBus:         bus,
@@ -34,60 +35,48 @@ func New(bus *event.Bus, w int, h int) *Field {
 	return &f
 }
 
+func (f *Field) GetId() string {
+	return f.GameId
+}
+
+func (f *Field) publishUpdate() {
+	f.eventBus.Publish(event.New(EventFieldUpdate, f, nil))
+}
+
 func (f *Field) Reset() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	f.Data = make([]uint8, f.Width*f.Height)
-	f.dirty = true
+	f.Data = make(PieceData, f.Width*f.Height)
+
+	f.publishUpdate()
+
 	f.requestedBedrock = 0
 	f.currentBedrock = 0
 }
 
-func (f *Field) RLock() {
-	f.mu.RLock()
-}
-
-func (f *Field) RUnlock() {
-	f.mu.RUnlock()
-}
-
-func (f *Field) IsDirty() bool {
-	f.mu.RLock()
-	defer f.mu.RUnlock()
-
-	return f.dirty
-}
-
-func (f *Field) SetDirty(dirty bool) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
-	f.dirty = dirty
-}
-
-func putPieceToSlice(buf []uint8, bufWidth int, p *piece.Piece, r int, x int, y int) {
-	for px := 0; px < piece.DataWidth; px++ {
-		for py := 0; py < piece.DataWidth; py++ {
+func putPieceToSlice(buf PieceData, bufWidth int, p *Piece, r int, x int, y int) {
+	for px := 0; px < pieceDataWidth; px++ {
+		for py := 0; py < pieceDataWidth; py++ {
 			d := p.GetDataXY(r, px, py)
 
 			if d != 0 {
 				id := (py+y)*bufWidth + (px + x)
 
-				// todo(DATA RACE): marshalling Field.data happens async to this
+				// todo(DATA RACE): marshalling field.data happens async to this
 				buf[id] = d
 			}
 		}
 	}
 }
 
-func (f *Field) PutPiece(p *piece.Piece, r int, x int, y int) {
+func (f *Field) PutPiece(p *Piece, r int, x int, y int) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	putPieceToSlice(f.Data, f.Width, p, r, x, y)
 
-	f.dirty = true
+	f.publishUpdate()
 }
 
 func (f *Field) isInBounds(x int, y int) bool {
@@ -98,12 +87,12 @@ func (f *Field) isInBounds(x int, y int) bool {
 	return true
 }
 
-func (f *Field) CanPutPiece(p *piece.Piece, r int, x int, y int) bool {
+func (f *Field) CanPutPiece(p *Piece, r int, x int, y int) bool {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 
-	for px := 0; px < piece.DataWidth; px++ {
-		for py := 0; py < piece.DataWidth; py++ {
+	for px := 0; px < pieceDataWidth; px++ {
+		for py := 0; py < pieceDataWidth; py++ {
 			tx := px + x
 			ty := py + y
 
@@ -131,7 +120,7 @@ func (f *Field) applyBedrock() bool {
 
 		f.currentBedrock--
 
-		f.dirty = true
+		f.publishUpdate()
 	}
 
 	for f.currentBedrock < f.requestedBedrock {
@@ -154,10 +143,10 @@ func (f *Field) applyBedrock() bool {
 		f.currentBedrock++
 
 		for x := 0; x < f.Width; x++ {
-			f.SetDataXY(x, f.Height-f.currentBedrock, piece.Bedrock)
+			f.SetDataXY(x, f.Height-f.currentBedrock, Bedrock)
 		}
 
-		f.dirty = true
+		f.publishUpdate()
 	}
 
 	return false
@@ -201,7 +190,7 @@ func (f *Field) ClearFullRows() int {
 		for x := 0; x < f.Width; x++ {
 			d := f.GetDataXY(x, y)
 
-			if d == 0 || d == piece.Bedrock {
+			if d == 0 || d == Bedrock {
 				isFull = false
 				break
 			}
@@ -225,7 +214,7 @@ func (f *Field) ClearFullRows() int {
 	}
 
 	if cleared > 0 {
-		f.dirty = true
+		f.publishUpdate()
 	}
 
 	return cleared

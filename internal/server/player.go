@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bloccs-server/pkg/game"
 	"context"
 	"github.com/gorilla/websocket"
 	"log"
@@ -10,45 +9,35 @@ import (
 )
 
 type Player struct {
-	ID                  string
-	Name                string
-	CreateAt            int64
-	game                *game.Game
-	Conn                *websocket.Conn
+	GameId              string `json:"gameId"`
+	Name                string `json:"name"`
+	CreateAt            int64  `json:"createAt"`
+	gameCommandChannel  chan string
+	Conn                *websocket.Conn `json:"-"`
 	connWriteMutex      *sync.Mutex
 	connReadMutex       *sync.Mutex
-	Disconnect          chan bool
 	listenLoopWaitGroup *sync.WaitGroup
 	cancelListenLoop    context.CancelFunc
 }
 
 type StopCallbackFunc func()
 
-func NewPlayer(conn *websocket.Conn, game *game.Game) *Player {
+func NewPlayer(conn *websocket.Conn, gameId string, gameCommandChannel chan string) *Player {
 	return &Player{
-		ID:                  game.ID,
+		GameId:              gameId,
 		Name:                "",
 		CreateAt:            time.Now().UnixMilli(),
+		gameCommandChannel:  gameCommandChannel,
 		Conn:                conn,
-		game:                game,
 		connWriteMutex:      &sync.Mutex{},
 		connReadMutex:       &sync.Mutex{},
-		Disconnect:          make(chan bool),
 		listenLoopWaitGroup: &sync.WaitGroup{},
 		cancelListenLoop:    nil,
 	}
 }
 
-func (p *Player) ResetGame() {
-	p.game.Reset()
-}
-
-func (p *Player) StopGame() {
-	p.game.Stop()
-}
-
-func (p *Player) StartGame(gameOverHandler func()) {
-	p.game.Start(gameOverHandler)
+func (p *Player) GetId() string {
+	return p.GameId
 }
 
 func (p *Player) Listen(stopCallback StopCallbackFunc) {
@@ -67,8 +56,6 @@ func (p *Player) Listen(stopCallback StopCallbackFunc) {
 			if p.cancelListenLoop != nil {
 				p.cancelListenLoop()
 			}
-
-			p.StopGame()
 
 			p.listenLoopWaitGroup.Wait()
 
@@ -104,7 +91,7 @@ func (p *Player) Listen(stopCallback StopCallbackFunc) {
 			}
 
 			if t == websocket.TextMessage {
-				p.game.Command(string(msg))
+				p.gameCommandChannel <- string(msg)
 			}
 		}
 	}()

@@ -1,13 +1,29 @@
 package server
 
 import (
+	"bloccs-server/pkg/bloccs"
 	"bloccs-server/pkg/event"
 	"log"
 )
 
-func (r *Room) passEvent(p *Player, e *event.Event) error {
-	// todo: throttle events from other players; only send specific events instantly
-	// todo: this data-races if event body is something not locked - may be irrelevant though
+const EventPlayerJoin = "player_join"
+const EventPlayerLeave = "player_leave"
+
+// todo: could be done smarter maybe?
+func isInGameEvent(eventType event.Type) bool {
+	return eventType != EventHello &&
+		eventType != EventHelloAck &&
+		eventType != EventPlayerJoin &&
+		eventType != EventPlayerLeave &&
+		eventType != bloccs.EventGameStart
+}
+
+func (r *Room) sendEventToPlayer(e *event.Event, p *Player) error {
+	if !r.gamesRunning && isInGameEvent(e.Type) {
+		return nil
+	}
+
+	// todo: this data-races if event body is written during marshalling not locked
 
 	bs, err := e.GetAsBytes()
 
@@ -23,11 +39,18 @@ func (r *Room) passEvent(p *Player, e *event.Event) error {
 	return nil
 }
 
-func (r *Room) AddPlayer(p *Player) {
+func (r *Room) RegisterPlayer(p *Player, g *bloccs.Game) {
 	r.playersMutex.Lock()
 	defer r.playersMutex.Unlock()
 
-	if _, ok := r.Players[p.ID]; ok {
+	r.gamesMutex.Lock()
+	defer r.gamesMutex.Unlock()
+
+	if _, ok := r.Players[p.GetId()]; ok {
+		return
+	}
+
+	if _, ok := r.Games[g.GetId()]; ok {
 		return
 	}
 
@@ -35,48 +58,46 @@ func (r *Room) AddPlayer(p *Player) {
 		return
 	}
 
-	r.Players[p.ID] = p
+	r.Players[p.GetId()] = p
+	r.Games[g.GetId()] = g
 
-	r.eventBus.Subscribe(event.ChannelRoom, func(e *event.Event) {
-		if err := r.passEvent(p, e); err != nil {
+	r.eventBus.Subscribe(event.All, func(event *event.Event) {
+		if err := r.sendEventToPlayer(event, p); err != nil {
 			log.Println("error passing event")
-			r.RemovePlayer(p)
+
+			r.RemoveGame(g)
 		}
-	}, p.ID)
+	})
 
-	r.eventBus.Subscribe("update/.*", func(e *event.Event) {
-		if e.Type == event.GameOver {
-
-		}
-
-		if err := r.passEvent(p, e); err != nil {
-			log.Println("error passing event")
-			r.RemovePlayer(p)
-		}
-	}, p.ID)
-
-	r.eventBus.Publish(event.New(event.ChannelRoom, event.PlayerJoin, &event.PlayerJoinPayload{
-		ID:       p.ID,
-		Name:     p.Name,
-		CreateAt: p.CreateAt,
-	}))
+	r.eventBus.Publish(event.New(EventPlayerJoin, p, nil))
 }
 
-func (r *Room) RemovePlayer(p *Player) {
+func (r *Room) RemoveGame(g *bloccs.Game) {
 	r.playersMutex.Lock()
 	defer r.playersMutex.Unlock()
 
-	if _, ok := r.Players[p.ID]; !ok {
-		return
+	r.gamesMutex.Lock()
+	defer r.gamesMutex.Unlock()
+
+	r.eventHandlerIdsMutex.Lock()
+	defer r.eventHandlerIdsMutex.Unlock()
+
+	id := g.GetId()
+
+	if _, ok := r.Games[id]; ok {
+		delete(r.Games, id)
+
+		g.Stop()
 	}
 
-	r.eventBus.Unsubscribe(p.ID)
+	if p, ok := r.Players[id]; ok {
+		delete(r.Players, id)
 
-	delete(r.Players, p.ID)
+		if hid, ok := r.eventHandlerIds[id]; ok {
+			r.eventBus.Unsubscribe(hid)
+			delete(r.eventHandlerIds, id)
+		}
 
-	r.eventBus.Publish(event.New(event.ChannelRoom, event.PlayerLeave, &event.PlayerLeavePayload{
-		ID:       p.ID,
-		Name:     p.Name,
-		CreateAt: p.CreateAt,
-	}))
+		r.eventBus.Publish(event.New(EventPlayerLeave, p, nil))
+	}
 }
