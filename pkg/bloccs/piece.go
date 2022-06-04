@@ -12,13 +12,14 @@ const Bedrock = 'B'
 type PieceData []uint8
 
 type Piece struct {
-	Name         uint8
+	Name         uint8 `json:"name"`
 	rotatedFaces *[]PieceData
 }
 
-func NewPiece(p *Piece) *Piece {
-	res := *p
-	return &res
+func (p *Piece) RLock() {
+}
+
+func (p *Piece) RUnlock() {
 }
 
 func (d PieceData) MarshalJSON() ([]byte, error) {
@@ -75,61 +76,61 @@ var oPiece = Piece{
 	},
 }
 
-var lPiece = Piece{
-	Name: 'L',
-	rotatedFaces: &[]PieceData{
-		{
-			0, 0, 0, 0,
-			'L', 'L', 'L', 0,
-			0, 0, 'L', 0,
-			0, 0, 0, 0,
-		},
-		{
-			0, 'L', 0, 0,
-			0, 'L', 0, 0,
-			'L', 'L', 0, 0,
-			0, 0, 0, 0,
-		},
-		{
-			'L', 0, 0, 0,
-			'L', 'L', 'L', 0,
-			0, 0, 0, 0,
-			0, 0, 0, 0,
-		},
-		{
-			0, 'L', 'L', 0,
-			0, 'L', 0, 0,
-			0, 'L', 0, 0,
-			0, 0, 0, 0,
-		},
-	},
-}
-
 var jPiece = Piece{
 	Name: 'J',
 	rotatedFaces: &[]PieceData{
 		{
 			0, 0, 0, 0,
 			'J', 'J', 'J', 0,
-			'J', 0, 0, 0,
-			0, 0, 0, 0,
-		},
-		{
-			'J', 'J', 0, 0,
-			0, 'J', 0, 0,
-			0, 'J', 0, 0,
-			0, 0, 0, 0,
-		},
-		{
 			0, 0, 'J', 0,
+			0, 0, 0, 0,
+		},
+		{
+			0, 'J', 0, 0,
+			0, 'J', 0, 0,
+			'J', 'J', 0, 0,
+			0, 0, 0, 0,
+		},
+		{
+			'J', 0, 0, 0,
 			'J', 'J', 'J', 0,
 			0, 0, 0, 0,
 			0, 0, 0, 0,
 		},
 		{
-			0, 'J', 0, 0,
-			0, 'J', 0, 0,
 			0, 'J', 'J', 0,
+			0, 'J', 0, 0,
+			0, 'J', 0, 0,
+			0, 0, 0, 0,
+		},
+	},
+}
+
+var lPiece = Piece{
+	Name: 'L',
+	rotatedFaces: &[]PieceData{
+		{
+			0, 0, 0, 0,
+			'L', 'L', 'L', 0,
+			'L', 0, 0, 0,
+			0, 0, 0, 0,
+		},
+		{
+			'L', 'L', 0, 0,
+			0, 'L', 0, 0,
+			0, 'L', 0, 0,
+			0, 0, 0, 0,
+		},
+		{
+			0, 0, 'L', 0,
+			'L', 'L', 'L', 0,
+			0, 0, 0, 0,
+			0, 0, 0, 0,
+		},
+		{
+			0, 'L', 0, 0,
+			0, 'L', 0, 0,
+			0, 'L', 'L', 0,
 			0, 0, 0, 0,
 		},
 	},

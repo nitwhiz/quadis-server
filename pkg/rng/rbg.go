@@ -34,7 +34,7 @@ func (r *RPG[BagElementType]) NextBag() {
 	r.bag = b
 }
 
-func (r *RPG[BagElementType]) NextPiece() *BagElementType {
+func (r *RPG[BagElementType]) Next() *BagElementType {
 	p, b := r.bag[0], r.bag[1:]
 
 	if len(b) == 0 {

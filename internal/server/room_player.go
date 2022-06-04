@@ -9,21 +9,44 @@ import (
 const EventPlayerJoin = "player_join"
 const EventPlayerLeave = "player_leave"
 
-// todo: could be done smarter maybe?
+// aka not-ingame events
+var lobbyEvents = []event.Type{
+	EventHello,
+	EventHelloAck,
+	EventPlayerJoin,
+	EventPlayerLeave,
+	bloccs.EventGameStart,
+	EventUpdateBedrockTargetMap,
+	EventRoomStart,
+	EventRoomStop,
+}
+
 func isInGameEvent(eventType event.Type) bool {
-	return eventType != EventHello &&
-		eventType != EventHelloAck &&
-		eventType != EventPlayerJoin &&
-		eventType != EventPlayerLeave &&
-		eventType != bloccs.EventGameStart
+	for _, ie := range lobbyEvents {
+		if eventType == ie {
+			return false
+		}
+	}
+
+	return true
+}
+
+type PlayerJoinLeavePayload struct {
+	Player *Player `json:"player"`
+}
+
+func (p *PlayerJoinLeavePayload) RLock() {
+	p.Player.RLock()
+}
+
+func (p *PlayerJoinLeavePayload) RUnlock() {
+	p.Player.RUnlock()
 }
 
 func (r *Room) sendEventToPlayer(e *event.Event, p *Player) error {
-	if !r.gamesRunning && isInGameEvent(e.Type) {
+	if !r.HasGamesRunning() && isInGameEvent(e.Type) {
 		return nil
 	}
-
-	// todo: this data-races if event body is written during marshalling not locked
 
 	bs, err := e.GetAsBytes()
 
@@ -40,11 +63,8 @@ func (r *Room) sendEventToPlayer(e *event.Event, p *Player) error {
 }
 
 func (r *Room) RegisterPlayer(p *Player, g *bloccs.Game) {
-	r.playersMutex.Lock()
-	defer r.playersMutex.Unlock()
-
-	r.gamesMutex.Lock()
-	defer r.gamesMutex.Unlock()
+	defer r.mu.Unlock()
+	r.mu.Lock()
 
 	if _, ok := r.Players[p.GetId()]; ok {
 		return
@@ -61,7 +81,12 @@ func (r *Room) RegisterPlayer(p *Player, g *bloccs.Game) {
 	r.Players[p.GetId()] = p
 	r.Games[g.GetId()] = g
 
-	r.eventBus.Subscribe(event.All, func(event *event.Event) {
+	if r.HostPlayer == nil {
+		// todo: promote random player to host player if this one leaves
+		r.HostPlayer = p
+	}
+
+	r.eventHandlerIds[p.GetId()] = r.eventBus.Subscribe(event.All, func(event *event.Event) {
 		if err := r.sendEventToPlayer(event, p); err != nil {
 			log.Println("error passing event")
 
@@ -69,18 +94,16 @@ func (r *Room) RegisterPlayer(p *Player, g *bloccs.Game) {
 		}
 	})
 
-	r.eventBus.Publish(event.New(EventPlayerJoin, p, nil))
+	r.eventBus.Publish(event.New(EventPlayerJoin, r, &PlayerJoinLeavePayload{
+		Player: p,
+	}))
+
+	r.cycleBedrockTargetMap()
 }
 
 func (r *Room) RemoveGame(g *bloccs.Game) {
-	r.playersMutex.Lock()
-	defer r.playersMutex.Unlock()
-
-	r.gamesMutex.Lock()
-	defer r.gamesMutex.Unlock()
-
-	r.eventHandlerIdsMutex.Lock()
-	defer r.eventHandlerIdsMutex.Unlock()
+	defer r.mu.Unlock()
+	r.mu.Lock()
 
 	id := g.GetId()
 
@@ -95,9 +118,14 @@ func (r *Room) RemoveGame(g *bloccs.Game) {
 
 		if hid, ok := r.eventHandlerIds[id]; ok {
 			r.eventBus.Unsubscribe(hid)
+
 			delete(r.eventHandlerIds, id)
 		}
 
-		r.eventBus.Publish(event.New(EventPlayerLeave, p, nil))
+		r.eventBus.Publish(event.New(EventPlayerLeave, r, &PlayerJoinLeavePayload{
+			Player: p,
+		}))
+
+		r.cycleBedrockTargetMap()
 	}
 }

@@ -15,30 +15,46 @@ type Score struct {
 	eventBus *event.Bus
 }
 
-func NewScore(gameId string) *Score {
+func NewScore(bus *event.Bus, gameId string) *Score {
 	return &Score{
-		GameId: gameId,
-		Score:  0,
-		Lines:  0,
-		mu:     &sync.RWMutex{},
+		GameId:   gameId,
+		Score:    0,
+		Lines:    0,
+		mu:       &sync.RWMutex{},
+		eventBus: bus,
 	}
 }
 
+func (s *Score) RLock() {
+	s.mu.RLock()
+}
+
+func (s *Score) RUnlock() {
+	s.mu.RUnlock()
+}
+
 func (s *Score) GetId() string {
+	defer s.mu.RUnlock()
+	s.mu.RLock()
+
 	return s.GameId
 }
 
 func (s *Score) Reset() {
-	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.mu.Lock()
 
 	s.Score = 0
 	s.Lines = 0
+
+	if s.eventBus != nil {
+		s.eventBus.Publish(event.New(EventScoreUpdate, s, nil))
+	}
 }
 
 func (s *Score) AddLines(l int) {
-	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.mu.Lock()
 
 	if l == 0 {
 		return
@@ -63,5 +79,7 @@ func (s *Score) AddLines(l int) {
 
 	s.Lines += l
 
-	s.eventBus.Publish(event.New(EventScoreUpdate, s, nil))
+	if s.eventBus != nil {
+		s.eventBus.Publish(event.New(EventScoreUpdate, s, nil))
+	}
 }

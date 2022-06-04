@@ -1,6 +1,8 @@
 package event
 
 import (
+	"context"
+	"log"
 	"sync"
 )
 
@@ -9,35 +11,48 @@ const All = "*"
 type Handler func(event *Event)
 
 type Bus struct {
-	nextHandlerId int
-	handlers      map[Type]map[int]Handler
-	handlersMutex *sync.RWMutex
-	waitGroup     *sync.WaitGroup
-	channel       chan *Event
-	stopChannel   chan bool
+	nextHandlerId  int
+	handlers       map[Type]map[int]Handler
+	waitGroup      *sync.WaitGroup
+	eventWaitGroup *sync.WaitGroup
+	channel        chan *Event
+	ctx            context.Context
+	stopFunc       context.CancelFunc
+	closeAfter     int
+	mu             *sync.RWMutex
 }
 
 func NewBus() *Bus {
-	return &Bus{
-		nextHandlerId: 0,
-		handlers:      map[Type]map[int]Handler{},
-		handlersMutex: &sync.RWMutex{},
-		waitGroup:     &sync.WaitGroup{},
-		channel:       make(chan *Event),
-		stopChannel:   make(chan bool),
+	b := Bus{
+		nextHandlerId:  0,
+		handlers:       map[Type]map[int]Handler{},
+		waitGroup:      &sync.WaitGroup{},
+		eventWaitGroup: &sync.WaitGroup{},
+		channel:        make(chan *Event, 100),
+		closeAfter:     -1,
+		mu:             &sync.RWMutex{},
 	}
+
+	b.ctx, b.stopFunc = context.WithCancel(context.Background())
+
+	return &b
 }
 
 func (b *Bus) Stop() {
-	b.stopChannel <- true
-	close(b.stopChannel)
+	b.eventWaitGroup.Wait()
+
+	if b.stopFunc != nil {
+		b.stopFunc()
+	} else {
+		log.Println("no stop func for bus, stopping may never finish")
+	}
 
 	b.waitGroup.Wait()
 }
 
 func (b *Bus) Subscribe(eventType Type, handler Handler) int {
-	b.handlersMutex.Lock()
-	defer b.handlersMutex.Unlock()
+	defer b.mu.Unlock()
+	b.mu.Lock()
 
 	if _, ok := b.handlers[eventType]; !ok {
 		b.handlers[eventType] = map[int]Handler{}
@@ -53,8 +68,8 @@ func (b *Bus) Subscribe(eventType Type, handler Handler) int {
 }
 
 func (b *Bus) Unsubscribe(handlerId int) {
-	b.handlersMutex.Lock()
-	defer b.handlersMutex.Unlock()
+	defer b.mu.Unlock()
+	b.mu.Lock()
 
 	for eventType := range b.handlers {
 		if _, ok := b.handlers[eventType][handlerId]; ok {
@@ -65,12 +80,13 @@ func (b *Bus) Unsubscribe(handlerId int) {
 }
 
 func (b *Bus) Publish(event *Event) {
+	b.eventWaitGroup.Add(1)
 	b.channel <- event
 }
 
 func (b *Bus) handleEvent(event *Event) {
-	defer b.handlersMutex.RUnlock()
-	b.handlersMutex.RLock()
+	defer b.mu.RUnlock()
+	b.mu.RLock()
 
 	hs, ok := b.handlers[event.Type]
 
@@ -96,10 +112,12 @@ func (b *Bus) Start() {
 
 		for {
 			select {
-			case <-b.stopChannel:
+			case <-b.ctx.Done():
 				return
 			case event := <-b.channel:
 				b.handleEvent(event)
+				b.eventWaitGroup.Done()
+				break
 			}
 		}
 	}()

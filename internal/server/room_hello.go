@@ -4,7 +4,7 @@ import (
 	"bloccs-server/pkg/event"
 	"encoding/json"
 	"errors"
-	"fmt"
+	"strings"
 )
 
 const EventHello = "hello"
@@ -18,7 +18,15 @@ type HelloAckPayload struct {
 	Player *Player `json:"player"`
 }
 
-func (r *Room) listenForHello(p *Player) (*HelloResponseMessage, error) {
+func (h *HelloAckPayload) RLock() {
+	h.Player.RLock()
+}
+
+func (h *HelloAckPayload) RUnlock() {
+	h.Player.RUnlock()
+}
+
+func listenForHello(p *Player) (*HelloResponseMessage, error) {
 	msg, err := p.ReadMessage()
 
 	if err != nil {
@@ -37,24 +45,31 @@ func (r *Room) listenForHello(p *Player) (*HelloResponseMessage, error) {
 }
 
 func (r *Room) sendHello(p *Player) error {
-	fmt.Println("sending hello")
 	return r.sendEventToPlayer(event.New(EventHello, nil, nil), p)
 }
 
-func (r *Room) handshakeHello(p *Player) error {
-	fmt.Println("handshaking")
+func sanitizeName(name string) string {
+	name = strings.TrimSpace(name)
 
+	if len(name) > 8 {
+		name = name[:8]
+	}
+
+	return strings.ToUpper(name)
+}
+
+func (r *Room) handshakeHello(p *Player) error {
 	if err := r.sendHello(p); err != nil {
 		return err
 	}
 
-	helloResponse, err := r.listenForHello(p)
+	helloResponse, err := listenForHello(p)
 
 	if err != nil {
 		return err
 	}
 
-	p.Name = helloResponse.Name
+	p.Name = sanitizeName(helloResponse.Name)
 
 	return r.sendEventToPlayer(event.New(EventHelloAck, r, &HelloAckPayload{Player: p}), p)
 }

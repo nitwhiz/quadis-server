@@ -9,9 +9,16 @@ import (
 	"github.com/gorilla/websocket"
 	"log"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 )
+
+const BloccsServerModeVariable = "BLOCCS_MODE"
+
+const BloccsServerModeLive = "live"
+const BloccsServerModeDev = "dev"
+const BloccsServerModeTest = "test"
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
@@ -20,26 +27,34 @@ var upgrader = websocket.Upgrader{
 }
 
 type Server struct {
-	rooms            map[string]*Room
-	roomsMutex       *sync.Mutex
-	systemWaitGroup  *sync.WaitGroup
-	systemCancelFunc context.CancelFunc
+	ginEngine           *gin.Engine
+	rooms               map[string]*Room
+	roomsMutex          *sync.Mutex
+	waitGroup           *sync.WaitGroup
+	roomWatcherStopFunc context.CancelFunc
 }
 
+// todo: POST /rooms/<roomId>/reset
+
 func New() *Server {
-	return &Server{
-		rooms:            map[string]*Room{},
-		roomsMutex:       &sync.Mutex{},
-		systemWaitGroup:  &sync.WaitGroup{},
-		systemCancelFunc: nil,
+	s := &Server{
+		ginEngine:           nil,
+		rooms:               map[string]*Room{},
+		roomsMutex:          &sync.Mutex{},
+		waitGroup:           &sync.WaitGroup{},
+		roomWatcherStopFunc: nil,
 	}
+
+	s.augmentGinEngine()
+
+	return s
 }
 
 func (s *Server) CreateRoom() *Room {
 	room := NewRoom()
 
-	s.roomsMutex.Lock()
 	defer s.roomsMutex.Unlock()
+	s.roomsMutex.Lock()
 
 	s.rooms[room.GetId()] = room
 
@@ -47,8 +62,8 @@ func (s *Server) CreateRoom() *Room {
 }
 
 func (s *Server) GetRoom(id string) *Room {
-	s.roomsMutex.Lock()
 	defer s.roomsMutex.Unlock()
+	s.roomsMutex.Lock()
 
 	r, ok := s.rooms[id]
 
@@ -61,8 +76,6 @@ func (s *Server) GetRoom(id string) *Room {
 
 func (s *Server) connect(roomId string, w http.ResponseWriter, r *http.Request) error {
 	room := s.GetRoom(roomId)
-
-	fmt.Println("upgrading connection")
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 
@@ -82,144 +95,115 @@ func (s *Server) connect(roomId string, w http.ResponseWriter, r *http.Request) 
 		return errors.New("room_not_found")
 	}
 
-	if room.AreGamesRunning() {
-		log.Println("games running")
-
-		if err = conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "room_has_games_running"), time.Now().Add(time.Second)); err != nil {
-			return err
-		}
-
-		if err = conn.Close(); err != nil {
-			return err
-		}
-
-		return errors.New("room_has_games_running")
-	}
-
-	fmt.Println("connection established")
+	//if room.AreGamesRunning() {
+	//	log.Println("games running")
+	//
+	//	if err = conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "room_has_games_running"), time.Now().Add(time.Second)); err != nil {
+	//		return err
+	//	}
+	//
+	//	if err = conn.Close(); err != nil {
+	//		return err
+	//	}
+	//
+	//	return errors.New("room_has_games_running")
+	//}
 
 	return room.Join(conn)
 }
 
-func (s *Server) startHTTPServer() error {
-	r := gin.Default()
+func (s *Server) augmentGinEngine() {
+	r := gin.New()
+
+	env := os.Getenv(BloccsServerModeVariable)
+
+	if env == "" {
+		env = BloccsServerModeDev
+	}
+
+	switch env {
+	case BloccsServerModeDev:
+		gin.SetMode(gin.DebugMode)
+		r.Use(gin.Recovery())
+		r.Use(gin.Logger())
+		break
+	case BloccsServerModeTest:
+		gin.SetMode(gin.TestMode)
+		r.Use(gin.Recovery())
+		break
+	case BloccsServerModeLive:
+		gin.SetMode(gin.ReleaseMode)
+		r.Use(gin.Recovery())
+		break
+	}
 
 	r.Use(cors.Default())
 
-	r.POST("/rooms", func(c *gin.Context) {
-		room := s.CreateRoom()
+	r.GET("/ping", getPingHandler())
 
-		c.JSON(http.StatusOK, gin.H{
-			"roomId": room.Id,
-		})
-	})
+	r.POST("/rooms", postRoomsHandler(s))
 
-	r.POST("/rooms/:roomId/start", func(c *gin.Context) {
-		roomId := c.Param("roomId")
+	r.POST("/rooms/:roomId/start", postRoomStartHandler(s))
 
-		if roomId == "" {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "room id is empty",
-			})
+	r.GET("/rooms/:roomId", getRoomsHandler(s))
 
-			return
-		}
+	r.GET("/rooms/:roomId/socket", getRoomSocketHandler(s))
 
-		room := s.GetRoom(roomId)
+	s.ginEngine = r
+}
 
-		if room == nil {
-			c.JSON(http.StatusNotFound, gin.H{
-				"error": "room not found",
-			})
-
-			return
-		}
-
-		room.Start()
-
-		c.Status(http.StatusNoContent)
-	})
-
-	r.GET("/rooms/:roomId", func(c *gin.Context) {
-		roomId := c.Param("roomId")
-
-		if roomId == "" {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "room id is empty",
-			})
-
-			return
-		}
-
-		room := s.GetRoom(roomId)
-
-		if room == nil {
-			c.Status(http.StatusNotFound)
-		} else {
-			c.Status(http.StatusNoContent)
-		}
-	})
-
-	r.GET("/rooms/:roomId/socket", func(c *gin.Context) {
-		roomId := c.Param("roomId")
-
-		if err := s.connect(roomId, c.Writer, c.Request); err != nil {
-			c.Abort()
-		}
-	})
-
-	return r.Run("0.0.0.0:7000")
+func (s *Server) startHTTPServer() error {
+	return s.ginEngine.Run("0.0.0.0:7000")
 }
 
 func (s *Server) Stop() {
-	if s.systemCancelFunc != nil {
-		s.systemCancelFunc()
+	if s.roomWatcherStopFunc != nil {
+		s.roomWatcherStopFunc()
 	}
 
-	s.systemWaitGroup.Wait()
+	s.waitGroup.Wait()
+}
+
+func (s *Server) roomWatcher() {
+	defer s.waitGroup.Done()
+	s.waitGroup.Add(1)
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	s.roomWatcherStopFunc = cancel
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(time.Minute):
+			s.roomsMutex.Lock()
+
+			runningRooms := map[string]*Room{}
+			playerCount := 0
+
+			for rid, r := range s.rooms {
+				if r.ShouldStop() {
+					go r.Stop()
+				} else {
+					runningRooms[rid] = r
+					playerCount += r.GetPlayerCount()
+				}
+			}
+
+			log.Println(fmt.Sprintf("ROOMS: %d/%d", len(runningRooms), len(s.rooms)))
+			log.Println(fmt.Sprintf("PLAYERS: %d", playerCount))
+
+			s.rooms = runningRooms
+
+			s.roomsMutex.Unlock()
+			break
+		}
+	}
 }
 
 func (s *Server) Start() error {
-	ctx, cancel := context.WithCancel(context.Background())
-
-	s.systemCancelFunc = cancel
-
-	// room watching
-	go func() {
-		s.systemWaitGroup.Add(1)
-		defer s.systemWaitGroup.Done()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(time.Minute):
-				s.roomsMutex.Lock()
-
-				runningRooms := map[string]*Room{}
-				playerCount := 0
-
-				// todo: rework this
-
-				for rid, r := range s.rooms {
-					if r.ShouldClose() {
-						r.Stop()
-					} else {
-						runningRooms[rid] = r
-						playerCount += r.GetPlayerCount()
-					}
-				}
-
-				log.Println(fmt.Sprintf("ROOMS: %d/%d", len(runningRooms), len(s.rooms)))
-				log.Println(fmt.Sprintf("PLAYERS: %d", playerCount))
-
-				s.rooms = runningRooms
-
-				s.roomsMutex.Unlock()
-			}
-
-		}
-	}()
+	go s.roomWatcher()
 
 	if err := s.startHTTPServer(); err != nil {
 		return err

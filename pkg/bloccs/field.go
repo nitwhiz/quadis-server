@@ -8,51 +8,64 @@ import (
 const EventFieldUpdate = "field_update"
 
 type Field struct {
-	GameId           string    `json:"gameId"`
-	Data             PieceData `json:"data"`
-	Width            int       `json:"width"`
-	Height           int       `json:"height"`
-	CenterX          int       `json:"-"`
-	currentBedrock   int
-	requestedBedrock int
-	eventBus         *event.Bus
-	mu               *sync.RWMutex
+	GameId         string    `json:"gameId"`
+	Data           PieceData `json:"data"`
+	width          int
+	height         int
+	centerX        int
+	currentBedrock int
+	eventBus       *event.Bus
+	mu             *sync.RWMutex
 }
 
 func NewField(bus *event.Bus, id string, w int, h int) *Field {
 	f := Field{
-		GameId:           id,
-		Data:             make(PieceData, w*h),
-		Width:            w,
-		Height:           h,
-		CenterX:          w/2 - pieceDataWidth/2,
-		requestedBedrock: 0,
-		currentBedrock:   0,
-		eventBus:         bus,
-		mu:               &sync.RWMutex{},
+		GameId:         id,
+		Data:           make(PieceData, w*h),
+		width:          w,
+		height:         h,
+		centerX:        w/2 - pieceDataWidth/2,
+		currentBedrock: 0,
+		eventBus:       bus,
+		mu:             &sync.RWMutex{},
 	}
 
 	return &f
 }
 
+func (f *Field) RLock() {
+	f.mu.RLock()
+}
+
+func (f *Field) RUnlock() {
+	f.mu.RUnlock()
+}
+
 func (f *Field) GetId() string {
+	f.mu.RLock()
+	f.mu.RUnlock()
+
 	return f.GameId
 }
 
 func (f *Field) publishUpdate() {
+	if f.eventBus == nil {
+		return
+	}
+
+	// todo only send if necessary
 	f.eventBus.Publish(event.New(EventFieldUpdate, f, nil))
 }
 
 func (f *Field) Reset() {
-	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.mu.Lock()
 
-	f.Data = make(PieceData, f.Width*f.Height)
+	f.Data = make(PieceData, f.width*f.height)
+
+	f.currentBedrock = 0
 
 	f.publishUpdate()
-
-	f.requestedBedrock = 0
-	f.currentBedrock = 0
 }
 
 func putPieceToSlice(buf PieceData, bufWidth int, p *Piece, r int, x int, y int) {
@@ -63,7 +76,6 @@ func putPieceToSlice(buf PieceData, bufWidth int, p *Piece, r int, x int, y int)
 			if d != 0 {
 				id := (py+y)*bufWidth + (px + x)
 
-				// todo(DATA RACE): marshalling field.data happens async to this
 				buf[id] = d
 			}
 		}
@@ -71,16 +83,16 @@ func putPieceToSlice(buf PieceData, bufWidth int, p *Piece, r int, x int, y int)
 }
 
 func (f *Field) PutPiece(p *Piece, r int, x int, y int) {
-	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.mu.Lock()
 
-	putPieceToSlice(f.Data, f.Width, p, r, x, y)
+	putPieceToSlice(f.Data, f.width, p, r, x, y)
 
 	f.publishUpdate()
 }
 
 func (f *Field) isInBounds(x int, y int) bool {
-	if x < 0 || x >= f.Width || y < 0 || y >= f.Height {
+	if x < 0 || x >= f.width || y < 0 || y >= f.height {
 		return false
 	}
 
@@ -88,15 +100,15 @@ func (f *Field) isInBounds(x int, y int) bool {
 }
 
 func (f *Field) CanPutPiece(p *Piece, r int, x int, y int) bool {
-	f.mu.RLock()
 	defer f.mu.RUnlock()
+	f.mu.RLock()
 
 	for px := 0; px < pieceDataWidth; px++ {
 		for py := 0; py < pieceDataWidth; py++ {
 			tx := px + x
 			ty := py + y
 
-			if p.GetDataXY(r, px, py) != 0 && (!f.isInBounds(tx, ty) || f.Data[ty*f.Width+tx] != 0) {
+			if p.GetDataXY(r, px, py) != 0 && (!f.isInBounds(tx, ty) || f.Data[ty*f.width+tx] != 0) {
 				return false
 			}
 		}
@@ -105,90 +117,97 @@ func (f *Field) CanPutPiece(p *Piece, r int, x int, y int) bool {
 	return true
 }
 
-// applyBedrock returns if there is a bedrock induced game over
-func (f *Field) applyBedrock() bool {
-	for f.currentBedrock > f.requestedBedrock {
-		for y := f.Height - 1; y >= 0; y-- {
-			for x := 0; x < f.Width; x++ {
-				blockData := f.GetDataXY(x, y)
+// todo: broken
+// applyBedrock returns true if there is a bedrock induced game over
+func (f *Field) applyBedrock(bedrockDelta int, producedBedrock *int) bool {
+	if bedrockDelta < 0 && f.currentBedrock >= 0 {
+		for bedrockDelta < 0 && f.currentBedrock > 0 {
+			for y := f.height - 1; y >= 0; y-- {
+				for x := 0; x < f.width; x++ {
+					blockData := f.getDataXY(x, y)
 
-				if y != f.Height-1 {
-					f.SetDataXY(x, y+1, blockData)
+					if y != f.height-1 {
+						f.setDataXY(x, y+1, blockData)
+						f.setDataXY(x, y, 0)
+					}
 				}
 			}
+
+			f.currentBedrock--
+			bedrockDelta++
+
+			f.publishUpdate()
 		}
 
-		f.currentBedrock--
+		if producedBedrock != nil {
+			*producedBedrock = bedrockDelta * -1
+		}
+	} else if bedrockDelta > 0 {
+		for bedrockDelta > 0 {
+			for y := 0; y < f.height; y++ {
+				for x := 0; x < f.width; x++ {
+					blockData := f.getDataXY(x, y)
 
-		f.publishUpdate()
-	}
+					// todo: check if bedrock crashes into current falling piece, return true
 
-	for f.currentBedrock < f.requestedBedrock {
-		for y := 0; y < f.Height; y++ {
-			for x := 0; x < f.Width; x++ {
-				blockData := f.GetDataXY(x, y)
+					if blockData != 0 && y == 0 {
+						return true
+					}
 
-				// todo: check if bedrock crashes into current falling piece
-
-				if blockData != 0 && y == 0 {
-					return true
-				}
-
-				if y != 0 {
-					f.SetDataXY(x, y-1, blockData)
+					if y != 0 {
+						f.setDataXY(x, y-1, blockData)
+					}
 				}
 			}
+
+			f.currentBedrock++
+			bedrockDelta--
+
+			for x := 0; x < f.width; x++ {
+				f.setDataXY(x, f.height-f.currentBedrock, Bedrock)
+			}
+
+			f.publishUpdate()
 		}
-
-		f.currentBedrock++
-
-		for x := 0; x < f.Width; x++ {
-			f.SetDataXY(x, f.Height-f.currentBedrock, Bedrock)
-		}
-
-		f.publishUpdate()
 	}
 
 	return false
 }
 
-func (f *Field) IncreaseBedrock(delta int) {
-	f.mu.Lock()
+// IncreaseBedrock returns true on gameover
+func (f *Field) IncreaseBedrock(increaseCount int) bool {
 	defer f.mu.Unlock()
+	f.mu.Lock()
 
-	f.requestedBedrock += delta
-
-	if f.requestedBedrock > f.Height {
-		f.requestedBedrock = f.Height
+	if increaseCount+f.currentBedrock > f.height {
+		increaseCount = f.height
 	}
 
-	f.applyBedrock()
+	return f.applyBedrock(increaseCount, nil)
 }
 
-func (f *Field) DecreaseBedrock(delta int) {
-	f.mu.Lock()
+func (f *Field) DecreaseBedrock(decreaseCount int) int {
 	defer f.mu.Unlock()
+	f.mu.Lock()
 
-	f.requestedBedrock -= delta
+	producedBedrock := 0
 
-	if f.requestedBedrock < 0 {
-		f.requestedBedrock = 0
-	}
+	f.applyBedrock(-decreaseCount, &producedBedrock)
 
-	f.applyBedrock()
+	return producedBedrock
 }
 
 func (f *Field) ClearFullRows() int {
-	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.mu.Lock()
 
 	cleared := 0
 
-	for y := 0; y < f.Height; y++ {
+	for y := 0; y < f.height; y++ {
 		isFull := true
 
-		for x := 0; x < f.Width; x++ {
-			d := f.GetDataXY(x, y)
+		for x := 0; x < f.width; x++ {
+			d := f.getDataXY(x, y)
 
 			if d == 0 || d == Bedrock {
 				isFull = false
@@ -197,18 +216,17 @@ func (f *Field) ClearFullRows() int {
 		}
 
 		if isFull {
-			cleared++
-
-			for yi := y; yi > 0; yi-- {
-				for x := 0; x < f.Width; x++ {
+			for yi := y; yi > -1; yi-- {
+				for x := 0; x < f.width; x++ {
 					if yi == 0 {
-						f.SetDataXY(x, yi, 0)
+						f.setDataXY(x, yi, 0)
+					} else {
+						f.setDataXY(x, yi, f.getDataXY(x, yi-1))
 					}
-
-					f.SetDataXY(x, yi, f.GetDataXY(x, yi-1))
 				}
 			}
 
+			cleared++
 			y--
 		}
 	}
@@ -220,10 +238,20 @@ func (f *Field) ClearFullRows() int {
 	return cleared
 }
 
-func (f *Field) SetDataXY(x int, y int, d uint8) {
-	f.Data[y*f.Width+x] = d
+func (f *Field) setData(d PieceData, bedrock int) {
+	for x := 0; x < f.width; x++ {
+		for y := 0; y < f.height; y++ {
+			f.setDataXY(x, y, d[x+y*f.width])
+		}
+	}
+
+	f.currentBedrock = bedrock
 }
 
-func (f *Field) GetDataXY(x int, y int) uint8 {
-	return f.Data[y*f.Width+x]
+func (f *Field) setDataXY(x int, y int, d uint8) {
+	f.Data[y*f.width+x] = d
+}
+
+func (f *Field) getDataXY(x int, y int) uint8 {
+	return f.Data[y*f.width+x]
 }

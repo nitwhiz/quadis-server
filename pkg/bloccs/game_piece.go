@@ -33,12 +33,37 @@ func NewFallingPiece(eventBus *event.Bus, gameId string) *FallingPiece {
 	}
 }
 
+func (f *FallingPiece) RLock() {
+	f.mu.RLock()
+}
+
+func (f *FallingPiece) RUnlock() {
+	f.mu.RUnlock()
+}
+
+func (f *FallingPiece) Reset(g *Game) {
+	defer f.mu.Unlock()
+	f.mu.Lock()
+
+	f.Piece = nil
+	f.X = 0
+	f.Y = 0
+	f.FallTimer = 0
+
+	f.publishUpdate(g)
+}
+
 func (f *FallingPiece) GetId() string {
+	defer f.mu.RUnlock()
+	f.mu.RLock()
+
 	return f.GameId
 }
 
-func (f *FallingPiece) publishUpdate() {
-	f.eventBus.Publish(event.New(EventGameFallingPieceUpdate, f, nil))
+func (f *FallingPiece) publishUpdate(sourceGame *Game) {
+	if f.eventBus != nil {
+		f.eventBus.Publish(event.New(EventGameFallingPieceUpdate, sourceGame, f))
+	}
 }
 
 func (g *Game) canMoveFallingPiece(dr int, dx int, dy int) bool {
@@ -56,26 +81,26 @@ func (g *Game) canMoveFallingPiece(dr int, dx int, dy int) bool {
 
 func (g *Game) moveFallingPiece(dr int, dx int, dy int) {
 	if g.canMoveFallingPiece(dr, dx, dy) {
-		g.fallingPiece.Rotation += dr
+		g.fallingPiece.Rotation = g.fallingPiece.Piece.ClampRotation(g.fallingPiece.Rotation + dr)
 		g.fallingPiece.X += dx
 		g.fallingPiece.Y += dy
 
-		g.fallingPiece.publishUpdate()
+		g.fallingPiece.publishUpdate(g)
 	}
 }
 
 func (g *Game) getFallTimer() int {
-	return int(1000.0 / g.fallingPieceSpeed)
+	return int(1000.0 / g.Settings.FallingPieceSpeed)
 }
 
 func (g *Game) initFallingPiece() {
-	g.fallingPiece.X = g.field.CenterX
+	g.fallingPiece.X = g.field.centerX
 	g.fallingPiece.Y = 0
 	g.fallingPiece.Rotation = 0
 
 	g.fallingPiece.FallTimer = g.getFallTimer()
 
-	g.fallingPiece.publishUpdate()
+	g.fallingPiece.publishUpdate(g)
 }
 
 func (g *Game) setFallingPiece(p *Piece) {
@@ -87,11 +112,13 @@ func (g *Game) setFallingPiece(p *Piece) {
 func (g *Game) nextFallingPiece() {
 	g.setFallingPiece(g.nextPiece)
 
-	g.nextPiece = g.rbg.NextPiece()
+	g.nextPiece = g.rbg.Next()
 
-	g.fallingPiece.publishUpdate()
+	g.fallingPiece.publishUpdate(g)
 
-	g.eventBus.Publish(event.New(EventGameNextPieceUpdate, g, g.nextPiece))
+	if g.eventBus != nil {
+		g.eventBus.Publish(event.New(EventGameNextPieceUpdate, g, g.nextPiece))
+	}
 }
 
 func (g *Game) lockFallingPiece() int {
@@ -164,7 +191,9 @@ func (g *Game) holdFallingPiece() {
 		g.nextFallingPiece()
 	}
 
-	g.eventBus.Publish(event.New(EventGameHoldPieceUpdate, g, g.holdPiece))
+	if g.eventBus != nil {
+		g.eventBus.Publish(event.New(EventGameHoldPieceUpdate, g, g.holdPiece))
+	}
 }
 
 func (g *Game) hardLockFallingPiece() {
@@ -174,7 +203,10 @@ func (g *Game) hardLockFallingPiece() {
 
 	dy := 0
 
-	for dy < g.field.Height {
+	defer g.field.RUnlock()
+	g.field.RLock()
+
+	for dy < g.field.height {
 		if !g.canMoveFallingPiece(0, 0, dy) {
 			break
 		}

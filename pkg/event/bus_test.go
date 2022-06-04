@@ -2,9 +2,13 @@ package event
 
 import "testing"
 
-type TestPayload struct {
+type TestEventPayload struct {
 	Position int
 }
+
+func (s *TestEventPayload) RLock() {}
+
+func (s *TestEventPayload) RUnlock() {}
 
 func TestBus_GenericWithoutPayload(t *testing.T) {
 	b := NewBus()
@@ -25,11 +29,11 @@ func TestBus_GenericWithoutPayload(t *testing.T) {
 
 	b.Start()
 
-	e1 := New("testEvent1", &MyEventSource{Id: "1337"}, nil)
-	e2 := New("testEvent1", &MyEventSource{Id: "1337"}, nil)
-	e3 := New("testEvent2", &MyEventSource{Id: "1337"}, nil)
-	e4 := New("testEvent1", &MyEventSource{Id: "1337"}, nil)
-	e5 := New("testEvent2", &MyEventSource{Id: "1337"}, nil)
+	e1 := New("testEvent1", &TestEventSource{Id: "1337"}, nil)
+	e2 := New("testEvent1", &TestEventSource{Id: "1337"}, nil)
+	e3 := New("testEvent2", &TestEventSource{Id: "1337"}, nil)
+	e4 := New("testEvent1", &TestEventSource{Id: "1337"}, nil)
+	e5 := New("testEvent2", &TestEventSource{Id: "1337"}, nil)
 
 	b.Publish(e1)
 	b.Publish(e2)
@@ -61,29 +65,29 @@ func TestBus_GenericWithPayload(t *testing.T) {
 
 	b.Subscribe("testEvent1", func(event *Event) {
 		callCount1 += 1
-		recievedPayloads = append(recievedPayloads, event.Payload.(*TestPayload).Position)
+		recievedPayloads = append(recievedPayloads, event.Payload.(*TestEventPayload).Position)
 	})
 
 	b.Subscribe("testEvent2", func(event *Event) {
 		callCount2 += 1
-		recievedPayloads = append(recievedPayloads, event.Payload.(*TestPayload).Position)
+		recievedPayloads = append(recievedPayloads, event.Payload.(*TestEventPayload).Position)
 	})
 
 	b.Start()
 
-	e1 := New("testEvent1", &MyEventSource{Id: "1337"}, &TestPayload{
+	e1 := New("testEvent1", &TestEventSource{Id: "1337"}, &TestEventPayload{
 		Position: 0,
 	})
-	e2 := New("testEvent1", &MyEventSource{Id: "1337"}, &TestPayload{
+	e2 := New("testEvent1", &TestEventSource{Id: "1337"}, &TestEventPayload{
 		Position: 1,
 	})
-	e3 := New("testEvent2", &MyEventSource{Id: "1337"}, &TestPayload{
+	e3 := New("testEvent2", &TestEventSource{Id: "1337"}, &TestEventPayload{
 		Position: 2,
 	})
-	e4 := New("testEvent1", &MyEventSource{Id: "1337"}, &TestPayload{
+	e4 := New("testEvent1", &TestEventSource{Id: "1337"}, &TestEventPayload{
 		Position: 3,
 	})
-	e5 := New("testEvent2", &MyEventSource{Id: "1337"}, &TestPayload{
+	e5 := New("testEvent2", &TestEventSource{Id: "1337"}, &TestEventPayload{
 		Position: 4,
 	})
 

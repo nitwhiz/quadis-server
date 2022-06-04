@@ -18,6 +18,7 @@ type Player struct {
 	connReadMutex       *sync.Mutex
 	listenLoopWaitGroup *sync.WaitGroup
 	cancelListenLoop    context.CancelFunc
+	mu                  *sync.RWMutex
 }
 
 type StopCallbackFunc func()
@@ -33,7 +34,16 @@ func NewPlayer(conn *websocket.Conn, gameId string, gameCommandChannel chan stri
 		connReadMutex:       &sync.Mutex{},
 		listenLoopWaitGroup: &sync.WaitGroup{},
 		cancelListenLoop:    nil,
+		mu:                  &sync.RWMutex{},
 	}
+}
+
+func (p *Player) RLock() {
+	p.mu.RLock()
+}
+
+func (p *Player) RUnlock() {
+	p.mu.RUnlock()
 }
 
 func (p *Player) GetId() string {
@@ -126,8 +136,8 @@ func (p *Player) Listen(stopCallback StopCallbackFunc) {
 }
 
 func (p *Player) Ping() error {
-	p.connWriteMutex.Lock()
 	defer p.connWriteMutex.Unlock()
+	p.connWriteMutex.Lock()
 
 	_ = p.Conn.SetWriteDeadline(time.Now().Add(time.Second * 2))
 
@@ -139,8 +149,8 @@ func (p *Player) Ping() error {
 }
 
 func (p *Player) ReadMessage() ([]byte, error) {
-	p.connReadMutex.Lock()
 	defer p.connReadMutex.Unlock()
+	p.connReadMutex.Lock()
 
 	_ = p.Conn.SetReadDeadline(time.Now().Add(time.Second * 10))
 
@@ -155,8 +165,8 @@ func (p *Player) ReadMessage() ([]byte, error) {
 }
 
 func (p *Player) SendMessage(data []byte) error {
-	p.connWriteMutex.Lock()
 	defer p.connWriteMutex.Unlock()
+	p.connWriteMutex.Lock()
 
 	_ = p.Conn.SetWriteDeadline(time.Now().Add(time.Second * 5))
 
