@@ -1,8 +1,8 @@
 package server
 
 import (
-	"bloccs-server/pkg/event"
 	"encoding/json"
+	"github.com/nitwhiz/bloccs-server/pkg/event"
 	"log"
 )
 

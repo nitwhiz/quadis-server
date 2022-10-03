@@ -1,7 +1,8 @@
 package server
 
 import (
-	"bloccs-server/pkg/event"
+	"github.com/nitwhiz/bloccs-server/pkg/event"
+	"github.com/nitwhiz/bloccs-server/pkg/game"
 	"log"
 )
 
@@ -46,7 +47,37 @@ func (r *Room) AddPlayer(p *Player) {
 
 	r.eventBus.Subscribe("update/.*", func(e *event.Event) {
 		if e.Type == event.GameOver {
+			// todo
+		}
 
+		if e.Type == event.RowsCleared {
+			if rcp, ok := e.Payload.(*event.RowsClearedPayload); ok {
+				if rcp.BedrockCount == 0 {
+					if targetGameID, ok := r.bedrockTargetMap[rcp.GameId]; ok {
+						if tp, ok := r.Players[targetGameID]; ok && p.game.ID != rcp.GameId {
+							// todo: refactor this mess
+
+							tp.game.Field.IncreaseBedrock(rcp.RowsCount)
+
+							squished := false
+
+							for !tp.game.CanPutFallingPiece() {
+								squished = true
+
+								if tp.game.FallingPiece.Y <= 0 {
+									break
+								}
+
+								tp.game.FallingPiece.Y--
+							}
+
+							if squished {
+								tp.game.Command(game.CommandHardLock)
+							}
+						}
+					}
+				}
+			}
 		}
 
 		if err := r.passEvent(p, e); err != nil {
@@ -60,6 +91,8 @@ func (r *Room) AddPlayer(p *Player) {
 		Name:     p.Name,
 		CreateAt: p.CreateAt,
 	}))
+
+	r.randomPlayerIdGenerator.NextBag()
 }
 
 func (r *Room) RemovePlayer(p *Player) {

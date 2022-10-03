@@ -1,6 +1,6 @@
 package main
 
-import "bloccs-server/internal/server"
+import "github.com/nitwhiz/bloccs-server/internal/server"
 
 func main() {
 	srv := server.NewBloccsServer()

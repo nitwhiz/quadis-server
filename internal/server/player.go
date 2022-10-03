@@ -1,9 +1,9 @@
 package server
 
 import (
-	"bloccs-server/pkg/game"
 	"context"
 	"github.com/gorilla/websocket"
+	"github.com/nitwhiz/bloccs-server/pkg/game"
 	"log"
 	"sync"
 	"time"

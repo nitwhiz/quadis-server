@@ -1,44 +1,84 @@
 package server
 
 import (
-	"bloccs-server/pkg/event"
-	"bloccs-server/pkg/game"
-	"bloccs-server/pkg/score"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	"github.com/nitwhiz/bloccs-server/pkg/event"
+	"github.com/nitwhiz/bloccs-server/pkg/game"
+	"github.com/nitwhiz/bloccs-server/pkg/rng"
+	"github.com/nitwhiz/bloccs-server/pkg/score"
 	"log"
 	"sync"
 	"time"
 )
 
 type Room struct {
-	ID            string
-	Players       map[string]*Player
-	playersMutex  *sync.Mutex
-	eventBus      *event.Bus
-	roomWaitGroup *sync.WaitGroup
-	createAt      time.Time
-	gamesRunning  bool
-	isStopping    bool
+	ID                      string
+	Players                 map[string]*Player
+	playersMutex            *sync.Mutex
+	eventBus                *event.Bus
+	roomWaitGroup           *sync.WaitGroup
+	createAt                time.Time
+	gamesRunning            bool
+	isStopping              bool
+	bedrockTargetMap        map[string]string
+	bedrockTargetMapMutex   *sync.RWMutex
+	randomPlayerIdGenerator *rng.RSG
 }
 
 func NewRoom() *Room {
 	b := event.NewBus()
 
 	r := &Room{
-		ID:            uuid.NewString(),
-		Players:       map[string]*Player{},
-		eventBus:      b,
-		playersMutex:  &sync.Mutex{},
-		roomWaitGroup: &sync.WaitGroup{},
-		createAt:      time.Now(),
-		gamesRunning:  false,
-		isStopping:    false,
+		ID:                    uuid.NewString(),
+		Players:               map[string]*Player{},
+		eventBus:              b,
+		playersMutex:          &sync.Mutex{},
+		roomWaitGroup:         &sync.WaitGroup{},
+		createAt:              time.Now(),
+		gamesRunning:          false,
+		isStopping:            false,
+		bedrockTargetMap:      map[string]string{},
+		bedrockTargetMapMutex: &sync.RWMutex{},
 	}
+
+	r.randomPlayerIdGenerator = rng.NewRSG(time.Now().UnixMilli(), func() []string {
+		var pids []string
+
+		for pid := range r.Players {
+			pids = append(pids, pid)
+		}
+
+		return pids
+	})
 
 	b.AddChannel(event.ChannelRoom)
 
 	return r
+}
+
+func (r *Room) UpdateBedrockTargetMap() {
+	r.bedrockTargetMapMutex.Lock()
+	defer r.bedrockTargetMapMutex.Unlock()
+
+	r.playersMutex.Lock()
+	defer r.playersMutex.Unlock()
+
+	r.bedrockTargetMap = map[string]string{}
+
+	var playerIds []string
+
+	for pid := range r.Players {
+		playerIds = append(playerIds, pid)
+	}
+
+	for i := range playerIds {
+		r.bedrockTargetMap[playerIds[i]] = r.randomPlayerIdGenerator.NextElement()
+	}
+
+	r.eventBus.Publish(event.New(event.ChannelRoom, event.UpdateBedrockTargets, &event.UpdateBedrockTargetsPayload{
+		Targets: r.bedrockTargetMap,
+	}))
 }
 
 func (r *Room) GetPlayerCount() int {
@@ -56,8 +96,11 @@ func (r *Room) Join(conn *websocket.Conn) error {
 	}
 
 	r.AddPlayer(p)
+	r.UpdateBedrockTargetMap()
+
 	p.Listen(func() {
 		r.RemovePlayer(p)
+		r.UpdateBedrockTargetMap()
 	})
 
 	return nil

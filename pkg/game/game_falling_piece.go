@@ -1,7 +1,7 @@
 package game
 
 import (
-	"bloccs-server/pkg/piece"
+	"github.com/nitwhiz/bloccs-server/pkg/piece"
 	"sync"
 	"time"
 )
@@ -86,7 +86,7 @@ func (g *Game) setFallingPiece(p *piece.Piece) {
 func (g *Game) nextFallingPiece() {
 	g.setFallingPiece(g.NextPiece)
 
-	g.NextPiece = g.rpg.NextPiece()
+	g.NextPiece = g.rpg.NextElement()
 
 	g.FallingPiece.dirty = true
 	g.nextDirty = true

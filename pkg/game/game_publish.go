@@ -1,8 +1,8 @@
 package game
 
 import (
-	"bloccs-server/pkg/event"
 	"fmt"
+	"github.com/nitwhiz/bloccs-server/pkg/event"
 )
 
 func (g *Game) publish(e string, p event.Payload) {
@@ -45,5 +45,13 @@ func (g *Game) publishScoreUpdate() {
 	g.publish(event.UpdateScore, &event.UpdateScorePayload{
 		Score: g.Score.Score,
 		Lines: g.Score.Lines,
+	})
+}
+
+func (g *Game) publishRowsCleared(rowsCount int, bedrockCount int) {
+	g.publish(event.RowsCleared, &event.RowsClearedPayload{
+		GameId:       g.ID,
+		RowsCount:    rowsCount,
+		BedrockCount: bedrockCount,
 	})
 }

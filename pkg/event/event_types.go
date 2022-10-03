@@ -23,6 +23,9 @@ const UpdateHoldPiece = "update_hold_piece"
 const PlayerJoin = "player_join"
 const PlayerLeave = "player_leave"
 
+const UpdateBedrockTargets = "update_bedrock_targets"
+const RowsCleared = "rows_cleared"
+
 type PlayerPayload struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
@@ -85,4 +88,14 @@ type PlayerLeavePayload = PlayerPayload
 
 type PlayerGameOverPayload = struct {
 	Player PlayerPayload `json:"player"`
+}
+
+type UpdateBedrockTargetsPayload = struct {
+	Targets map[string]string `json:"targets"`
+}
+
+type RowsClearedPayload = struct {
+	GameId       string `json:"gameId"`
+	RowsCount    int    `json:"rowsCount"`
+	BedrockCount int    `json:"bedrockCount"`
 }

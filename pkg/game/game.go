@@ -1,14 +1,14 @@
 package game
 
 import (
-	"bloccs-server/pkg/event"
-	"bloccs-server/pkg/field"
-	"bloccs-server/pkg/piece"
-	"bloccs-server/pkg/rng"
-	"bloccs-server/pkg/score"
 	"context"
 	"fmt"
 	"github.com/google/uuid"
+	"github.com/nitwhiz/bloccs-server/pkg/event"
+	"github.com/nitwhiz/bloccs-server/pkg/field"
+	"github.com/nitwhiz/bloccs-server/pkg/piece"
+	"github.com/nitwhiz/bloccs-server/pkg/rng"
+	"github.com/nitwhiz/bloccs-server/pkg/score"
 	"hash/fnv"
 	"sync"
 	"time"
@@ -145,8 +145,12 @@ func (g *Game) Update(gameOverHandler func()) {
 	if g.lastUpdate != nil {
 		clearedRows, gameOver := g.updateFallingPiece(int(time.Now().Sub(*g.lastUpdate)))
 
-		g.Score.AddLines(clearedRows)
-		g.Field.DecreaseBedrock(clearedRows)
+		if clearedRows > 0 {
+			g.Score.AddLines(clearedRows)
+			bedrockCount := g.Field.DecreaseBedrock(clearedRows)
+
+			g.publishRowsCleared(clearedRows, bedrockCount)
+		}
 
 		if g.Field.IsDirty() {
 			g.publishFieldUpdate()
@@ -180,4 +184,12 @@ func (g *Game) Update(gameOverHandler func()) {
 	}
 
 	g.lastUpdate = &now
+}
+
+func (g *Game) CanPutFallingPiece() bool {
+	if g.FallingPiece == nil {
+		return false
+	}
+
+	return g.Field.CanPutPiece(g.FallingPiece.Piece, g.FallingPiece.Rotation, g.FallingPiece.X, g.FallingPiece.Y)
 }

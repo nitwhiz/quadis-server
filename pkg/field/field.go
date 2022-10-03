@@ -1,8 +1,8 @@
 package field
 
 import (
-	"bloccs-server/pkg/event"
-	"bloccs-server/pkg/piece"
+	"github.com/nitwhiz/bloccs-server/pkg/event"
+	"github.com/nitwhiz/bloccs-server/pkg/piece"
 	"sync"
 )
 
@@ -140,6 +140,9 @@ func (f *Field) applyBedrock() bool {
 				blockData := f.GetDataXY(x, y)
 
 				// todo: check if bedrock crashes into current falling piece
+				// bedrock increase can happen any time; falling piece is unknown here
+				// falling piece must be put at the most possible Y-position where it still fit's if it collides
+				// on bedrock update, falling piece may has to "squish" up as far as possible and be locked in place there
 
 				if blockData != 0 && y == 0 {
 					return true
@@ -176,7 +179,7 @@ func (f *Field) IncreaseBedrock(delta int) {
 	f.applyBedrock()
 }
 
-func (f *Field) DecreaseBedrock(delta int) {
+func (f *Field) DecreaseBedrock(delta int) int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -187,6 +190,8 @@ func (f *Field) DecreaseBedrock(delta int) {
 	}
 
 	f.applyBedrock()
+
+	return f.currentBedrock
 }
 
 func (f *Field) ClearFullRows() int {

@@ -1,9 +1,9 @@
 package field
 
 import (
-	"bloccs-server/pkg/event"
-	"bloccs-server/pkg/piece"
 	"fmt"
+	"github.com/nitwhiz/bloccs-server/pkg/event"
+	"github.com/nitwhiz/bloccs-server/pkg/piece"
 	"testing"
 )
 
