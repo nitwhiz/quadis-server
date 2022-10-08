@@ -95,7 +95,7 @@ type UpdateBedrockTargetsPayload = struct {
 }
 
 type RowsClearedPayload = struct {
-	GameId       string `json:"gameId"`
-	RowsCount    int    `json:"rowsCount"`
-	BedrockCount int    `json:"bedrockCount"`
+	GameId               string `json:"gameId"`
+	RowsCount            int    `json:"rowsCount"`
+	DistributableBedrock int    `json:"distributableBedrock"`
 }

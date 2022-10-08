@@ -166,6 +166,13 @@ func (f *Field) applyBedrock() bool {
 	return false
 }
 
+func (f *Field) GetBedrock() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return f.currentBedrock
+}
+
 func (f *Field) IncreaseBedrock(delta int) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

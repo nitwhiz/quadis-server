@@ -41,28 +41,46 @@ func NewBus() *Bus {
 }
 
 func (b *Bus) AddChannel(name string) {
-	c := make(chan *Event)
-
 	b.channelsMutex.Lock()
-	b.channels[name] = c
-	b.channelsMutex.Unlock()
+	defer b.channelsMutex.Unlock()
 
 	b.stopChannelsMutex.Lock()
+	defer b.stopChannelsMutex.Unlock()
+
+	if _, ok := b.channels[name]; ok {
+		return
+	}
+
+	if _, ok := b.stopChannels[name]; ok {
+		return
+	}
+
 	b.stopChannels[name] = make(chan bool)
-	b.stopChannelsMutex.Unlock()
+
+	c := make(chan *Event)
+
+	b.channels[name] = c
 
 	b.startChannelListener(name, c)
 }
 
 func (b *Bus) RemoveChannel(name string) {
-	b.channelsMutex.Lock()
-	delete(b.channels, name)
-	b.channelsMutex.Unlock()
-
 	b.stopChannelsMutex.Lock()
-	b.stopChannels[name] <- true
-	delete(b.stopChannels, name)
+
+	if sc, ok := b.stopChannels[name]; ok {
+		sc <- true
+		delete(b.stopChannels, name)
+	}
+
 	b.stopChannelsMutex.Unlock()
+
+	b.channelsMutex.Lock()
+
+	if _, ok := b.channels[name]; ok {
+		delete(b.channels, name)
+	}
+
+	b.channelsMutex.Unlock()
 }
 
 func (b *Bus) startChannelListener(n string, c chan *Event) {

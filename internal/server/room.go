@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/nitwhiz/bloccs-server/pkg/event"
@@ -24,6 +25,7 @@ type Room struct {
 	bedrockTargetMap        map[string]string
 	bedrockTargetMapMutex   *sync.RWMutex
 	randomPlayerIdGenerator *rng.RSG
+	gameOverPlayerCount     int
 }
 
 func NewRoom() *Room {
@@ -40,6 +42,7 @@ func NewRoom() *Room {
 		isStopping:            false,
 		bedrockTargetMap:      map[string]string{},
 		bedrockTargetMapMutex: &sync.RWMutex{},
+		gameOverPlayerCount:   0,
 	}
 
 	r.randomPlayerIdGenerator = rng.NewRSG(time.Now().UnixMilli(), func() []string {
@@ -68,12 +71,18 @@ func (r *Room) UpdateBedrockTargetMap() {
 
 	var playerIds []string
 
-	for pid := range r.Players {
-		playerIds = append(playerIds, pid)
+	for pid, p := range r.Players {
+		if !p.game.IsOver {
+			playerIds = append(playerIds, pid)
+		}
 	}
 
-	for i := range playerIds {
-		r.bedrockTargetMap[playerIds[i]] = r.randomPlayerIdGenerator.NextElement()
+	for _, pId := range playerIds {
+		rpId := r.randomPlayerIdGenerator.NextElement()
+
+		if pId != rpId {
+			r.bedrockTargetMap[pId] = rpId
+		}
 	}
 
 	r.eventBus.Publish(event.New(event.ChannelRoom, event.UpdateBedrockTargets, &event.UpdateBedrockTargetsPayload{
@@ -96,7 +105,6 @@ func (r *Room) Join(conn *websocket.Conn) error {
 	}
 
 	r.AddPlayer(p)
-	r.UpdateBedrockTargetMap()
 
 	p.Listen(func() {
 		r.RemovePlayer(p)
@@ -122,26 +130,48 @@ func (r *Room) ShouldClose() bool {
 }
 
 func (r *Room) Start() {
-	r.playersMutex.Lock()
-
-	for _, player := range r.Players {
-		// todo: rewrite
-		player.StartGame(func() {
-			r.eventBus.Publish(&event.Event{
-				Channel: event.ChannelRoom,
-				Type:    event.GameOver,
-				Payload: &event.PlayerGameOverPayload{
-					Player: event.PlayerPayload{
-						ID:       player.ID,
-						Name:     player.Name,
-						CreateAt: player.CreateAt,
-					},
-				},
-			})
-		})
+	if r.gamesRunning {
+		return
 	}
 
-	r.playersMutex.Unlock()
+	r.ResetGames()
+	r.UpdateBedrockTargetMap()
+
+	r.gameOverPlayerCount = 0
+
+	for _, player := range r.Players {
+		(func(player *Player) {
+			// todo: rewrite
+			player.StartGame(func() {
+				r.eventBus.Publish(&event.Event{
+					Channel: fmt.Sprintf("update/%s", player.ID),
+					Type:    event.GameOver,
+					Payload: &event.PlayerGameOverPayload{
+						Player: event.PlayerPayload{
+							ID:       player.ID,
+							Name:     player.Name,
+							CreateAt: player.CreateAt,
+						},
+					},
+				})
+
+				// todo: locking; race conditions for room struct access
+
+				player.StopGame()
+				r.UpdateBedrockTargetMap()
+
+				r.gameOverPlayerCount++
+
+				if r.gameOverPlayerCount >= len(r.Players)-1 {
+					for _, sp := range r.Players {
+						sp.StopGame()
+					}
+
+					r.gamesRunning = false
+				}
+			})
+		})(player)
+	}
 
 	r.gamesRunning = true
 

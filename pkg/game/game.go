@@ -2,7 +2,6 @@ package game
 
 import (
 	"context"
-	"fmt"
 	"github.com/google/uuid"
 	"github.com/nitwhiz/bloccs-server/pkg/event"
 	"github.com/nitwhiz/bloccs-server/pkg/field"
@@ -10,6 +9,7 @@ import (
 	"github.com/nitwhiz/bloccs-server/pkg/rng"
 	"github.com/nitwhiz/bloccs-server/pkg/score"
 	"hash/fnv"
+	"math"
 	"sync"
 	"time"
 )
@@ -31,6 +31,8 @@ type Game struct {
 	globalWaitGroup *sync.WaitGroup
 	mu              *sync.RWMutex
 	cancelTickLoop  context.CancelFunc
+	ClearedRowsBus  *event.Bus
+	running         bool
 }
 
 func New(bus *event.Bus, rngSeed string) *Game {
@@ -57,11 +59,13 @@ func New(bus *event.Bus, rngSeed string) *Game {
 		globalWaitGroup: &sync.WaitGroup{},
 		mu:              &sync.RWMutex{},
 		cancelTickLoop:  nil,
+		ClearedRowsBus:  event.NewBus(),
+		running:         false,
 	}
 
-	game.nextFallingPiece()
+	game.ClearedRowsBus.AddChannel("none")
 
-	bus.AddChannel(fmt.Sprintf("update/%s", game.ID))
+	game.nextFallingPiece()
 
 	return game
 }
@@ -86,6 +90,8 @@ func (g *Game) Start(gameOverHandler func()) {
 
 	g.cancelTickLoop = cancel
 
+	g.running = true
+
 	go func() {
 		defer g.globalWaitGroup.Done()
 
@@ -109,6 +115,9 @@ func (g *Game) Reset() {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
+	// todo: new rpg on base of previous seed
+
+	g.FallingPiece = NewFallingPiece()
 	g.HoldPiece = nil
 	g.holdLock = false
 	g.holdDirty = false
@@ -117,19 +126,31 @@ func (g *Game) Reset() {
 	g.IsOver = false
 	g.lastUpdate = nil
 	g.cancelTickLoop = nil
+	g.running = false
+
+	// todo: wtf
+	g.nextFallingPiece()
+	g.nextFallingPiece()
 
 	g.Score.Reset()
 	g.Field.Reset()
 }
 
 func (g *Game) Stop() {
+	if !g.running {
+		return
+	}
+
+	g.running = false
+
 	if g.cancelTickLoop != nil {
 		g.cancelTickLoop()
+		g.cancelTickLoop = nil
 	}
 
 	g.globalWaitGroup.Wait()
 
-	g.EventBus.RemoveChannel(fmt.Sprintf("update/%s", g.ID))
+	//g.EventBus.RemoveChannel(fmt.Sprintf("update/%s", g.ID))
 }
 
 func (g *Game) Update(gameOverHandler func()) {
@@ -143,13 +164,18 @@ func (g *Game) Update(gameOverHandler func()) {
 	now := time.Now()
 
 	if g.lastUpdate != nil {
+		oldBedrockLevel := g.Field.GetBedrock()
 		clearedRows, gameOver := g.updateFallingPiece(int(time.Now().Sub(*g.lastUpdate)))
 
 		if clearedRows > 0 {
 			g.Score.AddLines(clearedRows)
-			bedrockCount := g.Field.DecreaseBedrock(clearedRows)
+			newBedrockLevel := g.Field.DecreaseBedrock(clearedRows)
 
-			g.publishRowsCleared(clearedRows, bedrockCount)
+			if newBedrockLevel == 0 {
+				g.publishRowsCleared(clearedRows, int(math.Max(float64(clearedRows-oldBedrockLevel), 0)))
+			} else {
+				g.publishRowsCleared(clearedRows, 0)
+			}
 		}
 
 		if g.Field.IsDirty() {
@@ -160,6 +186,10 @@ func (g *Game) Update(gameOverHandler func()) {
 		if g.FallingPiece.IsDirty() {
 			g.publishFallingPieceUpdate()
 			g.FallingPiece.SetDirty(false)
+
+			if !g.CanPutFallingPiece() {
+				gameOver = true
+			}
 		}
 
 		if g.nextDirty {
@@ -179,7 +209,7 @@ func (g *Game) Update(gameOverHandler func()) {
 
 		if gameOver {
 			g.IsOver = true
-			gameOverHandler()
+			go gameOverHandler()
 		}
 	}
 

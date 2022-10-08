@@ -21,6 +21,10 @@ func (g *Game) publishFieldUpdate() {
 }
 
 func (g *Game) publishFallingPieceUpdate() {
+	if g.FallingPiece == nil || g.FallingPiece.Piece == nil {
+		return
+	}
+
 	g.publish(event.UpdateFallingPiece, &event.UpdateFallingPiecePayload{
 		PieceName: g.FallingPiece.Piece.Name,
 		Rotation:  g.FallingPiece.Rotation,
@@ -48,10 +52,11 @@ func (g *Game) publishScoreUpdate() {
 	})
 }
 
-func (g *Game) publishRowsCleared(rowsCount int, bedrockCount int) {
-	g.publish(event.RowsCleared, &event.RowsClearedPayload{
-		GameId:       g.ID,
-		RowsCount:    rowsCount,
-		BedrockCount: bedrockCount,
-	})
+func (g *Game) publishRowsCleared(rowsCount int, distributableBedrock int) {
+	// todo: this is messy
+	g.ClearedRowsBus.Publish(event.New("none", event.RowsCleared, &event.RowsClearedPayload{
+		GameId:               g.ID,
+		RowsCount:            rowsCount,
+		DistributableBedrock: distributableBedrock,
+	}))
 }
