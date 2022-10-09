@@ -1,41 +1,35 @@
 package game
 
-const CommandLeft = "L"
-const CommandRight = "R"
-const CommandDown = "D"
-const CommandRotate = "X"
-const CommandHardLock = "P"
-const CommandHold = "H"
+type Command string
 
-func (g *Game) Command(cmd string) {
-	g.mu.Lock()
-	defer g.mu.Unlock()
+const CommandLeft = Command("L")
+const CommandRight = Command("R")
+const CommandDown = Command("D")
+const CommandRotate = Command("X")
+const CommandHardLock = Command("P")
+const CommandHold = Command("H")
 
-	g.FallingPiece.mu.Lock()
-	defer g.FallingPiece.mu.Unlock()
-
-	// todo: piece locking runs into deadlock (?)
-
+func (g *Game) HandleCommand(cmd Command) {
 	switch cmd {
 	case CommandLeft:
-		g.moveFallingPiece(0, -1, 0)
-		return
+		g.tryTranslateFallingPiece(0, -1, 0)
+		break
 	case CommandRight:
-		g.moveFallingPiece(0, 1, 0)
-		return
+		g.tryTranslateFallingPiece(0, 1, 0)
+		break
 	case CommandDown:
-		g.moveFallingPiece(0, 0, 1)
-		return
+		g.tryTranslateFallingPiece(0, 0, 1)
+		break
 	case CommandRotate:
-		g.moveFallingPiece(1, 0, 0)
-		return
+		g.tryTranslateFallingPiece(1, 0, 0)
+		break
 	case CommandHardLock:
 		g.hardLockFallingPiece()
-		return
+		break
 	case CommandHold:
-		g.holdFallingPiece()
-		return
+		g.tryHoldFallingPiece()
+		break
 	default:
-		return
+		break
 	}
 }

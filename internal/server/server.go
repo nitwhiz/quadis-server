@@ -1,13 +1,11 @@
 package server
 
 import (
-	"context"
 	"errors"
-	"fmt"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
-	"log"
+	"github.com/nitwhiz/quadis-server/pkg/room"
 	"net/http"
 	"sync"
 	"time"
@@ -19,57 +17,47 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-type BloccsServer struct {
-	rooms            map[string]*Room
-	roomsMutex       *sync.Mutex
-	systemWaitGroup  *sync.WaitGroup
-	systemCancelFunc context.CancelFunc
+type Server struct {
+	rooms      map[string]*room.Room
+	roomsMutex *sync.Mutex
 }
 
-func NewBloccsServer() *BloccsServer {
-	return &BloccsServer{
-		rooms:            map[string]*Room{},
-		roomsMutex:       &sync.Mutex{},
-		systemWaitGroup:  &sync.WaitGroup{},
-		systemCancelFunc: nil,
+func New() *Server {
+	return &Server{
+		rooms:      map[string]*room.Room{},
+		roomsMutex: &sync.Mutex{},
 	}
 }
 
-func (s *BloccsServer) CreateRoom() *Room {
-	room := NewRoom()
+func (s *Server) createRoom() *room.Room {
+	r := room.New()
 
 	s.roomsMutex.Lock()
 	defer s.roomsMutex.Unlock()
 
-	s.rooms[room.ID] = room
+	s.rooms[r.GetId()] = r
 
-	return room
+	return r
 }
 
-func (s *BloccsServer) GetRoom(id string) *Room {
-	s.roomsMutex.Lock()
+func (s *Server) getRoom(id string) *room.Room {
 	defer s.roomsMutex.Unlock()
+	s.roomsMutex.Lock()
 
-	r, ok := s.rooms[id]
-
-	if ok {
+	if r, ok := s.rooms[id]; ok {
 		return r
 	}
 
 	return nil
 }
 
-func (s *BloccsServer) connect(roomId string, w http.ResponseWriter, r *http.Request) error {
-	room := s.GetRoom(roomId)
+func (s *Server) connect(roomId string, resp http.ResponseWriter, req *http.Request) error {
+	r := s.getRoom(roomId)
 
-	conn, err := upgrader.Upgrade(w, r, nil)
+	conn, err := upgrader.Upgrade(resp, req, nil)
 
-	if err != nil {
-		return err
-	}
-
-	if room == nil {
-		if err = conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "room_has_games_running"), time.Now().Add(time.Second)); err != nil {
+	if r == nil {
+		if err = conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "room_not_found"), time.Now().Add(time.Second)); err != nil {
 			return err
 		}
 
@@ -80,33 +68,21 @@ func (s *BloccsServer) connect(roomId string, w http.ResponseWriter, r *http.Req
 		return errors.New("room_not_found")
 	}
 
-	if room.AreGamesRunning() {
-		log.Println("games running")
+	// todo: if room is already active
 
-		if err = conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "room_has_games_running"), time.Now().Add(time.Second)); err != nil {
-			return err
-		}
-
-		if err = conn.Close(); err != nil {
-			return err
-		}
-
-		return errors.New("room_has_games_running")
-	}
-
-	return room.Join(conn)
+	return r.CreatePlayer(conn)
 }
 
-func (s *BloccsServer) startHTTPServer() error {
+func (s *Server) Start() error {
 	r := gin.Default()
 
 	r.Use(cors.Default())
 
 	r.POST("/rooms", func(c *gin.Context) {
-		room := s.CreateRoom()
+		r := s.createRoom()
 
 		c.JSON(http.StatusOK, gin.H{
-			"roomId": room.ID,
+			"roomId": r.GetId(),
 		})
 	})
 
@@ -121,9 +97,9 @@ func (s *BloccsServer) startHTTPServer() error {
 			return
 		}
 
-		room := s.GetRoom(roomId)
+		r := s.getRoom(roomId)
 
-		if room == nil {
+		if r == nil {
 			c.JSON(http.StatusNotFound, gin.H{
 				"error": "room not found",
 			})
@@ -131,7 +107,7 @@ func (s *BloccsServer) startHTTPServer() error {
 			return
 		}
 
-		room.Start()
+		r.Start()
 
 		c.Status(http.StatusNoContent)
 	})
@@ -147,9 +123,9 @@ func (s *BloccsServer) startHTTPServer() error {
 			return
 		}
 
-		room := s.GetRoom(roomId)
+		r := s.getRoom(roomId)
 
-		if room == nil {
+		if r == nil {
 			c.Status(http.StatusNotFound)
 		} else {
 			c.Status(http.StatusNoContent)
@@ -165,58 +141,4 @@ func (s *BloccsServer) startHTTPServer() error {
 	})
 
 	return r.Run("0.0.0.0:7000")
-}
-
-func (s *BloccsServer) Stop() {
-	if s.systemCancelFunc != nil {
-		s.systemCancelFunc()
-	}
-
-	s.systemWaitGroup.Wait()
-}
-
-func (s *BloccsServer) Start() error {
-	ctx, cancel := context.WithCancel(context.Background())
-
-	s.systemCancelFunc = cancel
-
-	go func() {
-		s.systemWaitGroup.Add(1)
-		defer s.systemWaitGroup.Done()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(time.Minute):
-				s.roomsMutex.Lock()
-
-				runningRooms := map[string]*Room{}
-				playerCount := 0
-
-				for rid, r := range s.rooms {
-					if r.ShouldClose() {
-						r.Stop()
-					} else {
-						runningRooms[rid] = r
-						playerCount += r.GetPlayerCount()
-					}
-				}
-
-				log.Println(fmt.Sprintf("ROOMS: %d/%d", len(runningRooms), len(s.rooms)))
-				log.Println(fmt.Sprintf("PLAYERS: %d", playerCount))
-
-				s.rooms = runningRooms
-
-				s.roomsMutex.Unlock()
-			}
-
-		}
-	}()
-
-	if err := s.startHTTPServer(); err != nil {
-		return err
-	}
-
-	return nil
 }

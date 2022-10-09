@@ -1,57 +1,54 @@
 package score
 
-import "sync"
+import (
+	"github.com/nitwhiz/quadis-server/pkg/dirty"
+	"sync"
+)
 
 type Score struct {
+	score int
+	lines int
+	Dirty *dirty.Dirtiness
+	mu    *sync.RWMutex
+}
+
+type Payload struct {
 	Score int
 	Lines int
-	dirty bool
-	mu    *sync.RWMutex
 }
 
 func New() *Score {
 	return &Score{
-		Score: 0,
-		Lines: 0,
-		dirty: true,
+		score: 0,
+		lines: 0,
+		Dirty: dirty.New(),
 		mu:    &sync.RWMutex{},
 	}
 }
 
-func (s *Score) RLock() {
+func (s *Score) ToPayload() *Payload {
+	defer s.mu.RUnlock()
 	s.mu.RLock()
-}
 
-func (s *Score) RUnlock() {
-	s.mu.RUnlock()
+	return &Payload{
+		Score: s.score,
+		Lines: s.lines,
+	}
 }
 
 func (s *Score) Reset() {
-	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	s.Score = 0
-	s.Lines = 0
-	s.dirty = true
-}
-
-func (s *Score) IsDirty() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	return s.dirty
-}
-
-func (s *Score) SetDirty(dirty bool) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 
-	s.dirty = dirty
+	s.score = 0
+	s.lines = 0
+
+	s.Dirty.Toggle()
 }
 
 func (s *Score) AddLines(l int) {
-	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.mu.Lock()
 
 	if l == 0 {
 		return
@@ -59,22 +56,22 @@ func (s *Score) AddLines(l int) {
 
 	switch l {
 	case 1:
-		s.Score += 60
+		s.score += 60
 		break
 	case 2:
-		s.Score += 150
+		s.score += 150
 		break
 	case 3:
-		s.Score += 420
+		s.score += 420
 		break
 	case 4:
-		s.Score += 2500
+		s.score += 2500
 		break
 	default:
 		break
 	}
 
-	s.Lines += l
+	s.lines += l
 
-	s.dirty = true
+	s.Dirty.Toggle()
 }

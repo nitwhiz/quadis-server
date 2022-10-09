@@ -1,139 +1,106 @@
 package game
 
 import (
-	"github.com/nitwhiz/bloccs-server/pkg/piece"
-	"sync"
-	"time"
+	"github.com/nitwhiz/quadis-server/pkg/falling_piece"
+	"github.com/nitwhiz/quadis-server/pkg/field"
+	"github.com/nitwhiz/quadis-server/pkg/piece"
 )
 
-type FallingPiece struct {
-	Piece     *piece.Piece
-	X         int
-	Y         int
-	Rotation  int
-	Speed     int
-	FallTimer int
-	dirty     bool
-	mu        *sync.RWMutex
+func (g *Game) putFallingPiece() int {
+	g.fallingPiece.Lock()
+
+	p, pRot, pX, pY := g.fallingPiece.GetPieceAndPosition()
+
+	g.field.PutPiece(p, pRot, pX, pY)
+
+	return g.field.ClearLines()
 }
 
-func NewFallingPiece() *FallingPiece {
-	return &FallingPiece{
-		Piece:     nil,
-		X:         0,
-		Y:         0,
-		Speed:     1,
-		FallTimer: 0,
-		dirty:     false,
-		mu:        &sync.RWMutex{},
+func (g *Game) hardLockFallingPiece() {
+	if g.fallingPiece == nil {
+		return
+	}
+
+	dy := 0
+
+	p, pRot, pX, pY := g.fallingPiece.GetPieceAndPosition()
+
+	for dy < field.Height {
+		if !g.field.CanPutPiece(p, pRot, pX, pY+dy) {
+			break
+		}
+
+		dy++
+	}
+
+	g.fallingPiece.SetY(pY + dy - 1)
+	g.fallingPiece.Lock()
+}
+
+func (g *Game) nextFallingPiece(lastPieceWasHeld bool) {
+	if g.nextPiece == nil {
+		g.nextPiece = piece.NewLivingPiece(g.rpg.NextElement())
+	}
+
+	if g.fallingPiece == nil {
+		g.fallingPiece = falling_piece.New(nil)
+	}
+
+	g.fallingPiece.Update(g.nextPiece.GetPiece(), g.field.GetCenterX(), 0, 0)
+
+	g.nextPiece.SetPiece(g.rpg.NextElement())
+
+	if !lastPieceWasHeld {
+		g.holdingPiece.SetLocked(false)
 	}
 }
 
-func (p *FallingPiece) IsDirty() bool {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-
-	return p.dirty
-}
-
-func (p *FallingPiece) SetDirty(dirty bool) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	p.dirty = dirty
-}
-
-func (g *Game) canMoveFallingPiece(dr int, dx int, dy int) bool {
-	if g.FallingPiece.Piece != nil && g.Field.CanPutPiece(
-		g.FallingPiece.Piece,
-		g.FallingPiece.Rotation+dr,
-		g.FallingPiece.X+dx,
-		g.FallingPiece.Y+dy,
-	) {
-		return true
+func (g *Game) tryTranslateFallingPiece(dr piece.Rotation, dx int, dy int) {
+	if g.fallingPiece == nil || g.fallingPiece.IsLocked() {
+		return
 	}
 
-	return false
-}
+	p, pr, px, py := g.fallingPiece.GetPieceAndPosition()
 
-func (g *Game) moveFallingPiece(dr int, dx int, dy int) {
-	if g.canMoveFallingPiece(dr, dx, dy) {
-		g.FallingPiece.Rotation += dr
-		g.FallingPiece.X += dx
-		g.FallingPiece.Y += dy
-
-		g.FallingPiece.dirty = true
+	if g.field.CanPutPiece(p, pr+dr, px+dx, py+dy) {
+		g.fallingPiece.SetPosition(pr+dr, px+dx, py+dy)
 	}
 }
 
-func (g *Game) initFallingPiece() {
-	g.FallingPiece.X = g.Field.CenterX
-	g.FallingPiece.Y = 0
-	g.FallingPiece.Rotation = 0
+func (g *Game) clearLinesAndNextPiece() (int, bool) {
+	clearedLines := g.putFallingPiece()
+	gameOver := false
 
-	g.FallingPiece.Speed = 1
-	g.FallingPiece.FallTimer = 1000
+	g.nextFallingPiece(false)
 
-	g.FallingPiece.dirty = true
-}
+	p, fpRot, fpX, fpY := g.fallingPiece.GetPieceAndPosition()
 
-func (g *Game) setFallingPiece(p *piece.Piece) {
-	g.FallingPiece.Piece = p
-
-	g.initFallingPiece()
-}
-
-func (g *Game) nextFallingPiece() {
-	g.setFallingPiece(g.NextPiece)
-
-	g.NextPiece = g.rpg.NextElement()
-
-	g.FallingPiece.dirty = true
-	g.nextDirty = true
-}
-
-func (g *Game) lockFallingPiece() int {
-	if g.FallingPiece.Piece != nil {
-		g.Field.PutPiece(
-			g.FallingPiece.Piece,
-			g.FallingPiece.Rotation,
-			g.FallingPiece.X,
-			g.FallingPiece.Y,
-		)
+	if !g.field.CanPutPiece(p, fpRot, fpX, fpY) {
+		gameOver = true
 	}
 
-	cleared := g.Field.ClearFullRows()
-
-	g.nextFallingPiece()
-
-	g.holdLock = false
-
-	return cleared
+	return clearedLines, gameOver
 }
 
-func (g *Game) updateFallingPiece(delta int) (int, bool) {
+func (g *Game) updateFallingPiece(delta int64) (int, bool) {
 	clearedLines := 0
 	gameOver := false
 
-	if g.FallingPiece.Piece == nil {
-		g.nextFallingPiece()
-		g.holdLock = false
+	if g.fallingPiece == nil {
+		g.nextFallingPiece(false)
+	}
+
+	if g.fallingPiece.IsLocked() {
+		clearedLines, gameOver = g.clearLinesAndNextPiece()
 	} else {
-		g.FallingPiece.FallTimer -= delta / int(time.Millisecond)
+		p, pRot, pX, _ := g.fallingPiece.GetPieceAndPosition()
+		shouldMove, nextY := g.fallingPiece.GetNextPosition(delta)
 
-		if g.FallingPiece.FallTimer <= 0 {
-			g.FallingPiece.FallTimer = 1000 / g.FallingPiece.Speed
-
-			if g.canMoveFallingPiece(0, 0, 1) {
-				g.moveFallingPiece(0, 0, 1)
+		if shouldMove {
+			if g.field.CanPutPiece(p, pRot, pX, nextY) {
+				g.fallingPiece.SetY(nextY)
 			} else {
-				clearedLines = g.lockFallingPiece()
-
-				if !g.canMoveFallingPiece(0, 0, 1) &&
-					!g.canMoveFallingPiece(0, 1, 0) &&
-					!g.canMoveFallingPiece(0, -1, 0) {
-					gameOver = true
-				}
+				clearedLines, gameOver = g.clearLinesAndNextPiece()
 			}
 		}
 	}
@@ -141,45 +108,20 @@ func (g *Game) updateFallingPiece(delta int) (int, bool) {
 	return clearedLines, gameOver
 }
 
-func (g *Game) holdFallingPiece() {
-	if g.FallingPiece.Piece == nil {
+func (g *Game) tryHoldFallingPiece() {
+	if g.fallingPiece == nil || g.holdingPiece.IsLocked() {
 		return
 	}
 
-	if g.holdLock {
-		return
-	}
+	currentHoldingPiece := g.holdingPiece.GetPiece()
 
-	g.holdLock = true
+	g.holdingPiece.SetPiece(g.fallingPiece.GetPiece())
 
-	if g.HoldPiece != nil {
-		g.FallingPiece.Piece, g.HoldPiece = g.HoldPiece, g.FallingPiece.Piece
-
-		g.initFallingPiece()
+	if currentHoldingPiece == nil {
+		g.nextFallingPiece(true)
 	} else {
-		g.HoldPiece = g.FallingPiece.Piece
-
-		g.nextFallingPiece()
+		g.fallingPiece.Update(currentHoldingPiece, g.field.GetCenterX(), 0, 0)
 	}
 
-	g.holdDirty = true
-}
-
-func (g *Game) hardLockFallingPiece() {
-	if g.FallingPiece.Piece == nil {
-		return
-	}
-
-	dy := 0
-
-	for dy < g.Field.Height {
-		if !g.canMoveFallingPiece(0, 0, dy) {
-			break
-		}
-
-		dy++
-	}
-
-	g.FallingPiece.Y += dy - 1
-	g.FallingPiece.FallTimer = 0
+	g.holdingPiece.SetLocked(true)
 }

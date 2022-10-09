@@ -1,12 +1,34 @@
 package piece
 
-const DataWidth = 4
+import (
+	"fmt"
+	"strings"
+)
 
-const Bedrock = 'B'
+type Token uint8
+type Body []Token
+type Tokens = Body
+type Rotation int
+
+const BodyWidth = 4
+
+const TokenBedrock = Token('B')
+
+const TokenI = Token('I')
+const TokenO = Token('O')
+const TokenL = Token('L')
+const TokenJ = Token('J')
+const TokenS = Token('S')
+const TokenT = Token('T')
+const TokenZ = Token('Z')
 
 type Piece struct {
-	Name         uint8
-	rotatedFaces *[][]uint8
+	Token        Token
+	rotatedFaces *[]Body
+}
+
+type Payload struct {
+	Token Token `json:"token"`
 }
 
 func New(p *Piece) *Piece {
@@ -14,193 +36,205 @@ func New(p *Piece) *Piece {
 	return &res
 }
 
-func (p *Piece) ClampRotation(rot int) int {
-	return rot % len(*p.rotatedFaces)
+func (d Tokens) MarshalJSON() ([]byte, error) {
+	var result string
+
+	if d == nil {
+		result = "null"
+	} else {
+		result = strings.Join(strings.Fields(fmt.Sprintf("%d", d)), ",")
+	}
+
+	return []byte(result), nil
 }
 
-func (p *Piece) GetData(rot int) *[]uint8 {
+func (p *Piece) ClampRotation(rot Rotation) Rotation {
+	return rot % Rotation(len(*p.rotatedFaces))
+}
+
+func (p *Piece) GetData(rot Rotation) *Body {
 	return &((*p.rotatedFaces)[p.ClampRotation(rot)])
 }
 
-func (p *Piece) GetDataXY(rot int, x int, y int) uint8 {
-	return (*p.rotatedFaces)[p.ClampRotation(rot)][y*DataWidth+x]
+func (p *Piece) GetDataXY(rot Rotation, x int, y int) Token {
+	return (*p.rotatedFaces)[p.ClampRotation(rot)][y*BodyWidth+x]
 }
 
 var I = Piece{
-	Name: 'I',
-	rotatedFaces: &[][]uint8{
+	Token: TokenI,
+	rotatedFaces: &[]Body{
 		{
 			0, 0, 0, 0,
 			0, 0, 0, 0,
-			'I', 'I', 'I', 'I',
+			TokenI, TokenI, TokenI, TokenI,
 			0, 0, 0, 0,
 		},
 		{
-			0, 0, 'I', 0,
-			0, 0, 'I', 0,
-			0, 0, 'I', 0,
-			0, 0, 'I', 0,
+			0, 0, TokenI, 0,
+			0, 0, TokenI, 0,
+			0, 0, TokenI, 0,
+			0, 0, TokenI, 0,
 		},
 	},
 }
 
 var O = Piece{
-	Name: 'O',
-	rotatedFaces: &[][]uint8{
+	Token: TokenO,
+	rotatedFaces: &[]Body{
 		{
 			0, 0, 0, 0,
-			0, 'O', 'O', 0,
-			0, 'O', 'O', 0,
+			0, TokenO, TokenO, 0,
+			0, TokenO, TokenO, 0,
 			0, 0, 0, 0,
 		},
 	},
 }
 
 var L = Piece{
-	Name: 'L',
-	rotatedFaces: &[][]uint8{
+	Token: TokenL,
+	rotatedFaces: &[]Body{
 		{
 			0, 0, 0, 0,
-			'L', 'L', 'L', 0,
-			0, 0, 'L', 0,
+			TokenL, TokenL, TokenL, 0,
+			0, 0, TokenL, 0,
 			0, 0, 0, 0,
 		},
 		{
-			0, 'L', 0, 0,
-			0, 'L', 0, 0,
-			'L', 'L', 0, 0,
+			0, TokenL, 0, 0,
+			0, TokenL, 0, 0,
+			TokenL, TokenL, 0, 0,
 			0, 0, 0, 0,
 		},
 		{
-			'L', 0, 0, 0,
-			'L', 'L', 'L', 0,
+			TokenL, 0, 0, 0,
+			TokenL, TokenL, TokenL, 0,
 			0, 0, 0, 0,
 			0, 0, 0, 0,
 		},
 		{
-			0, 'L', 'L', 0,
-			0, 'L', 0, 0,
-			0, 'L', 0, 0,
+			0, TokenL, TokenL, 0,
+			0, TokenL, 0, 0,
+			0, TokenL, 0, 0,
 			0, 0, 0, 0,
 		},
 	},
 }
 
 var J = Piece{
-	Name: 'J',
-	rotatedFaces: &[][]uint8{
+	Token: TokenJ,
+	rotatedFaces: &[]Body{
 		{
 			0, 0, 0, 0,
-			'J', 'J', 'J', 0,
-			'J', 0, 0, 0,
+			TokenJ, TokenJ, TokenJ, 0,
+			TokenJ, 0, 0, 0,
 			0, 0, 0, 0,
 		},
 		{
-			'J', 'J', 0, 0,
-			0, 'J', 0, 0,
-			0, 'J', 0, 0,
+			TokenJ, TokenJ, 0, 0,
+			0, TokenJ, 0, 0,
+			0, TokenJ, 0, 0,
 			0, 0, 0, 0,
 		},
 		{
-			0, 0, 'J', 0,
-			'J', 'J', 'J', 0,
+			0, 0, TokenJ, 0,
+			TokenJ, TokenJ, TokenJ, 0,
 			0, 0, 0, 0,
 			0, 0, 0, 0,
 		},
 		{
-			0, 'J', 0, 0,
-			0, 'J', 0, 0,
-			0, 'J', 'J', 0,
+			0, TokenJ, 0, 0,
+			0, TokenJ, 0, 0,
+			0, TokenJ, TokenJ, 0,
 			0, 0, 0, 0,
 		},
 	},
 }
 
 var S = Piece{
-	Name: 'S',
-	rotatedFaces: &[][]uint8{
+	Token: TokenS,
+	rotatedFaces: &[]Body{
 		{
 			0, 0, 0, 0,
-			0, 'S', 'S', 0,
-			'S', 'S', 0, 0,
+			0, TokenS, TokenS, 0,
+			TokenS, TokenS, 0, 0,
 			0, 0, 0, 0,
 		},
 		{
-			0, 'S', 0, 0,
-			0, 'S', 'S', 0,
-			0, 0, 'S', 0,
+			0, TokenS, 0, 0,
+			0, TokenS, TokenS, 0,
+			0, 0, TokenS, 0,
 			0, 0, 0, 0,
 		},
 		{
 			0, 0, 0, 0,
-			0, 'S', 'S', 0,
-			'S', 'S', 0, 0,
+			0, TokenS, TokenS, 0,
+			TokenS, TokenS, 0, 0,
 			0, 0, 0, 0,
 		},
 		{
-			0, 'S', 0, 0,
-			0, 'S', 'S', 0,
-			0, 0, 'S', 0,
+			0, TokenS, 0, 0,
+			0, TokenS, TokenS, 0,
+			0, 0, TokenS, 0,
 			0, 0, 0, 0,
 		},
 	},
 }
 
 var T = Piece{
-	Name: 'T',
-	rotatedFaces: &[][]uint8{
+	Token: TokenT,
+	rotatedFaces: &[]Body{
 		{
 			0, 0, 0, 0,
-			'T', 'T', 'T', 0,
-			0, 'T', 0, 0,
+			TokenT, TokenT, TokenT, 0,
+			0, TokenT, 0, 0,
 			0, 0, 0, 0,
 		},
 		{
-			0, 'T', 0, 0,
-			'T', 'T', 0, 0,
-			0, 'T', 0, 0,
+			0, TokenT, 0, 0,
+			TokenT, TokenT, 0, 0,
+			0, TokenT, 0, 0,
 			0, 0, 0, 0,
 		},
 		{
-			0, 'T', 0, 0,
-			'T', 'T', 'T', 0,
+			0, TokenT, 0, 0,
+			TokenT, TokenT, TokenT, 0,
 			0, 0, 0, 0,
 			0, 0, 0, 0,
 		},
 		{
-			0, 'T', 0, 0,
-			0, 'T', 'T', 0,
-			0, 'T', 0, 0,
+			0, TokenT, 0, 0,
+			0, TokenT, TokenT, 0,
+			0, TokenT, 0, 0,
 			0, 0, 0, 0,
 		},
 	},
 }
 
 var Z = Piece{
-	Name: 'Z',
-	rotatedFaces: &[][]uint8{
+	Token: TokenZ,
+	rotatedFaces: &[]Body{
 		{
 			0, 0, 0, 0,
-			'Z', 'Z', 0, 0,
-			0, 'Z', 'Z', 0,
+			TokenZ, TokenZ, 0, 0,
+			0, TokenZ, TokenZ, 0,
 			0, 0, 0, 0,
 		},
 		{
-			0, 0, 'Z', 0,
-			0, 'Z', 'Z', 0,
-			0, 'Z', 0, 0,
+			0, 0, TokenZ, 0,
+			0, TokenZ, TokenZ, 0,
+			0, TokenZ, 0, 0,
 			0, 0, 0, 0,
 		},
 		{
 			0, 0, 0, 0,
-			'Z', 'Z', 0, 0,
-			0, 'Z', 'Z', 0,
+			TokenZ, TokenZ, 0, 0,
+			0, TokenZ, TokenZ, 0,
 			0, 0, 0, 0,
 		},
 		{
-			0, 0, 'Z', 0,
-			0, 'Z', 'Z', 0,
-			0, 'Z', 0, 0,
+			0, 0, TokenZ, 0,
+			0, TokenZ, TokenZ, 0,
+			0, TokenZ, 0, 0,
 			0, 0, 0, 0,
 		},
 	},
