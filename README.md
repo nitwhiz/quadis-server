@@ -1,3 +1,3 @@
 # quadis-server
 
-An improved version of
+Puzzle Arcade Game Clone: Authoritative Server
