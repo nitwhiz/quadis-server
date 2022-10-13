@@ -62,8 +62,10 @@ func (g *Game) tryTranslateFallingPiece(dr piece.Rotation, dx int, dy int) {
 
 	p, pr, px, py := g.fallingPiece.GetPieceAndPosition()
 
-	if g.field.CanPutPiece(p, pr+dr, px+dx, py+dy) {
-		g.fallingPiece.SetPosition(pr+dr, px+dx, py+dy)
+	tr := p.ClampRotation(pr + dr)
+
+	if g.field.CanPutPiece(p, tr, px+dx, py+dy) {
+		g.fallingPiece.SetPosition(tr, px+dx, py+dy)
 	}
 }
 

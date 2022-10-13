@@ -12,15 +12,15 @@ type Rotation int
 
 const BodyWidth = 4
 
-const TokenBedrock = Token('B')
+const TokenI = Token(1)
+const TokenO = Token(2)
+const TokenL = Token(3)
+const TokenJ = Token(4)
+const TokenS = Token(5)
+const TokenT = Token(6)
+const TokenZ = Token(7)
 
-const TokenI = Token('I')
-const TokenO = Token('O')
-const TokenL = Token('L')
-const TokenJ = Token('J')
-const TokenS = Token('S')
-const TokenT = Token('T')
-const TokenZ = Token('Z')
+const TokenBedrock = Token(8)
 
 type Piece struct {
 	Token        Token
