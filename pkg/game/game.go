@@ -63,7 +63,7 @@ func New(settings *Settings) *Game {
 		holdingPiece:   nil,
 		field:          f,
 		bus:            settings.EventBus,
-		over:           false,
+		over:           true,
 		score:          s,
 		lastUpdate:     nil,
 		rpg:            rng.NewPiece(settings.Seed),
@@ -88,7 +88,7 @@ func (g *Game) reset() {
 	g.fallingPiece = nil
 	g.nextPiece = nil
 	g.holdingPiece = piece.NewLivingPiece(nil)
-	g.over = false
+	g.over = true
 	g.lastUpdate = nil
 
 	g.field.Reset()
@@ -213,6 +213,8 @@ func (g *Game) Start() {
 
 	g.reset()
 
+	g.over = false
+
 	g.startUpdater()
 	g.startCommandReader()
 }
@@ -225,6 +227,8 @@ func (g *Game) Stop() {
 		g.stop()
 		g.stop = nil
 	}
+
+	g.over = true
 
 	g.wg.Wait()
 }

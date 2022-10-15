@@ -124,22 +124,28 @@ func (r *Room) CreateGame(ws *websocket.Conn) error {
 		return err
 	}
 
-	p := player.New(hrm.PlayerName)
 	g := game.New(&game.Settings{
 		Id:             gameId,
 		EventBus:       r.bus,
 		Connection:     c,
-		Player:         p,
+		Player:         player.New(hrm.PlayerName),
 		BedrockChannel: r.bedrockDistribution.Channel,
 		ParentContext:  r.ctx,
 		Seed:           1234,
 	})
 
-	r.mu.Lock()
-	r.games[gameId] = g
-	r.mu.Unlock()
+	isHost := false
 
-	err = r.HandshakeAck(c, g, false)
+	r.gamesMutex.Lock()
+
+	// this is not 100% correct, but it's correct enough
+	isHost = len(r.games) == 0
+
+	r.games[gameId] = g
+
+	r.gamesMutex.Unlock()
+
+	err = r.HandshakeAck(c, g, isHost)
 
 	r.bus.Subscribe(gameId, c)
 
