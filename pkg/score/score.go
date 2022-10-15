@@ -13,8 +13,8 @@ type Score struct {
 }
 
 type Payload struct {
-	Score int
-	Lines int
+	Score int `json:"score"`
+	Lines int `json:"lines"`
 }
 
 func New() *Score {
