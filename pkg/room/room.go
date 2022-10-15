@@ -107,6 +107,8 @@ func (r *Room) CreatePlayer(ws *websocket.Conn) error {
 	r.games[g.GetId()] = g
 	r.mu.Unlock()
 
+	err = r.HandshakeAck(c, g, false)
+
 	r.bus.SubscribeAll(func(event *event.Event) {
 		// todo: serialization can happen once for broadcasts
 		msg, _ := event.Serialize()
@@ -118,8 +120,6 @@ func (r *Room) CreatePlayer(ws *websocket.Conn) error {
 		Origin:  event.OriginRoom(r.GetId()),
 		Payload: g.ToPayload(),
 	})
-
-	err = r.HandshakeAck(c, g, false)
 
 	if err != nil {
 		return err
