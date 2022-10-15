@@ -6,7 +6,7 @@ import (
 )
 
 func main() {
-	log.Println("hello!")
+	log.Println("Quadis Server")
 
 	s := server.New()
 

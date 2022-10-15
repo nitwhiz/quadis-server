@@ -70,7 +70,7 @@ func (s *Server) connect(roomId string, resp http.ResponseWriter, req *http.Requ
 
 	// todo: if room is already active
 
-	return r.CreatePlayer(conn)
+	return r.CreateGame(conn)
 }
 
 func (s *Server) Start() error {

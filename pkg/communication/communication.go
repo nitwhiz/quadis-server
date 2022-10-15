@@ -2,38 +2,50 @@ package communication
 
 import (
 	"context"
+	"errors"
 	"github.com/gorilla/websocket"
 	"log"
 	"sync"
 	"time"
 )
 
+type PreStopCallback func()
+
 type Connection struct {
-	ws         *websocket.Conn
-	ctx        context.Context
-	stop       context.CancelFunc
-	wg         *sync.WaitGroup
-	readMutex  *sync.Mutex
-	writeMutex *sync.Mutex
-	output     chan string
-	input      chan string
+	ws              *websocket.Conn
+	ctx             context.Context
+	stop            context.CancelFunc
+	wg              *sync.WaitGroup
+	readMutex       *sync.Mutex
+	writeMutex      *sync.Mutex
+	output          chan string
+	Input           chan string
+	isStopping      bool
+	preStopCallback PreStopCallback
 }
 
-func NewConnection(ws *websocket.Conn) *Connection {
-	ctx, cancel := context.WithCancel(context.Background())
+type Settings struct {
+	WS              *websocket.Conn
+	ParentContext   context.Context
+	PreStopCallback PreStopCallback
+}
+
+func NewConnection(settings *Settings) *Connection {
+	ctx, cancel := context.WithCancel(settings.ParentContext)
 
 	conn := Connection{
-		ws:         ws,
-		ctx:        ctx,
-		stop:       cancel,
-		wg:         &sync.WaitGroup{},
-		readMutex:  &sync.Mutex{},
-		writeMutex: &sync.Mutex{},
-		output:     make(chan string, 256),
-		input:      make(chan string, 256),
+		ws:              settings.WS,
+		ctx:             ctx,
+		stop:            cancel,
+		wg:              &sync.WaitGroup{},
+		readMutex:       &sync.Mutex{},
+		writeMutex:      &sync.Mutex{},
+		output:          make(chan string, 256),
+		Input:           make(chan string, 256),
+		isStopping:      false,
+		preStopCallback: settings.PreStopCallback,
 	}
 
-	// todo: disconnected connection never aborts; never sends either
 	conn.ws.SetPongHandler(func(string) error {
 		return conn.ws.SetReadDeadline(time.Now().Add(time.Second * 10))
 	})
@@ -44,43 +56,48 @@ func NewConnection(ws *websocket.Conn) *Connection {
 }
 
 func (c *Connection) listen() {
-	c.startPings()
-
-	c.startWriter()
-	c.startReader()
+	go c.startPings()
+	go c.startWriter()
+	go c.startReader()
 }
 
 func (c *Connection) Stop() {
-	log.Println("stopping connection")
+	if c.isStopping {
+		return
+	}
+
+	c.isStopping = true
+
+	log.Println("stopping connection ...")
+
+	if c.preStopCallback != nil {
+		c.preStopCallback()
+	}
 
 	c.stop()
+	_ = c.ws.Close()
+
 	c.wg.Wait()
+
+	log.Println("connection stopped")
 }
 
 func (c *Connection) startPings() {
-	go func() {
-		pingTicker := time.NewTicker(time.Second * 5)
-		defer pingTicker.Stop()
+	defer c.wg.Done()
+	c.wg.Add(1)
 
-		defer c.wg.Done()
-		c.wg.Add(1)
-
-		defer func(ws *websocket.Conn) {
-			_ = ws.Close()
-		}(c.ws)
-
-		for {
-			select {
-			case <-c.ctx.Done():
+	for {
+		select {
+		case <-c.ctx.Done():
+			return
+		case <-time.After(time.Second * 5):
+			if err := c.ping(); err != nil {
+				go c.Stop()
 				return
-			case <-pingTicker.C:
-				if err := c.ping(); err != nil {
-					return
-				}
-				break
 			}
+			break
 		}
-	}()
+	}
 }
 
 func (c *Connection) ping() error {
@@ -97,26 +114,27 @@ func (c *Connection) ping() error {
 }
 
 func (c *Connection) startReader() {
-	go func() {
-		defer c.wg.Done()
-		c.wg.Add(1)
+	defer c.wg.Done()
+	c.wg.Add(1)
 
-		for {
-			select {
-			case <-c.ctx.Done():
+	for {
+		select {
+		case <-c.ctx.Done():
+			return
+		case <-time.After(time.Microsecond * 250):
+			if msg, err := c.tryRead(); msg != "" && err == nil {
+				c.Input <- msg
+			} else if err != nil {
+				go c.Stop()
 				return
-			case <-time.After(time.Millisecond):
-				break
 			}
 
-			if msg := c.tryRead(); msg != "" {
-				c.input <- msg
-			}
+			break
 		}
-	}()
+	}
 }
 
-func (c *Connection) tryRead() string {
+func (c *Connection) tryRead() (string, error) {
 	defer c.readMutex.Unlock()
 	c.readMutex.Lock()
 
@@ -124,43 +142,43 @@ func (c *Connection) tryRead() string {
 	t, msg, err := c.ws.ReadMessage()
 
 	if t == websocket.CloseMessage {
-		return ""
+		return "", errors.New("websocket closed")
 	} else if _, ok := err.(*websocket.CloseError); ok {
-		c.Stop()
-
-		return ""
+		return "", errors.New("websocket closed")
 	}
 
 	if err != nil {
-		log.Printf("conn read error: %s, not closing connection.\n", err)
-		return ""
+		log.Printf("conn read error: %s, ignoring.\n", err)
+		return "", nil
 	}
 
 	if t == websocket.TextMessage {
-		return string(msg)
+		return string(msg), nil
 	}
 
-	return ""
+	return "", nil
 }
 
 func (c *Connection) startWriter() {
-	go func() {
-		defer c.wg.Done()
-		c.wg.Add(1)
+	defer c.wg.Done()
+	c.wg.Add(1)
 
-		for {
-			select {
-			case <-c.ctx.Done():
+	for {
+		select {
+		case <-c.ctx.Done():
+			return
+		case msg := <-c.output:
+			if err := c.tryWrite(msg); err != nil {
+				go c.Stop()
 				return
-			case msg := <-c.output:
-				c.tryWrite(msg)
-				break
 			}
+
+			break
 		}
-	}()
+	}
 }
 
-func (c *Connection) tryWrite(msg string) {
+func (c *Connection) tryWrite(msg string) error {
 	defer c.writeMutex.Unlock()
 	c.writeMutex.Lock()
 
@@ -168,23 +186,22 @@ func (c *Connection) tryWrite(msg string) {
 	err := c.ws.WriteMessage(websocket.TextMessage, []byte(msg))
 
 	if _, ok := err.(*websocket.CloseError); ok {
-		c.Stop()
-		return
+		return errors.New("websocket closed")
 	}
 
 	if err != nil {
-		log.Printf("conn write error: %s, not closing connection.\n", err)
+		log.Printf("conn write error: %s, ignoring.\n", err)
 	}
+
+	return nil
 }
 
-func (c *Connection) GetInputChannel() chan string {
-	return c.input
-}
-
+// Read blocks until there is an unread message from the websocket
 func (c *Connection) Read() string {
-	return <-c.input
+	return <-c.Input
 }
 
+// Write enqueues the message to be sent to the websocket, blocks if too many messages are enqueued
 func (c *Connection) Write(msg string) {
 	c.output <- msg
 }

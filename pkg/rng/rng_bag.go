@@ -23,6 +23,10 @@ func NewBag[ElementType any](seed int64, bagGen BagGenerator[ElementType]) *Bag[
 	return &r
 }
 
+func (r *Bag[any]) GetSize() int {
+	return len(r.bag)
+}
+
 func (r *Bag[any]) NextBag() {
 	b := r.bagGen()
 

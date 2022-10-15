@@ -2,7 +2,6 @@ package game
 
 import (
 	"context"
-	"github.com/google/uuid"
 	"github.com/nitwhiz/quadis-server/pkg/communication"
 	"github.com/nitwhiz/quadis-server/pkg/event"
 	"github.com/nitwhiz/quadis-server/pkg/falling_piece"
@@ -17,10 +16,12 @@ import (
 )
 
 type Settings struct {
+	Id             string
 	EventBus       *event.Bus
 	Connection     *communication.Connection
 	Player         *player.Player
 	BedrockChannel chan *Bedrock
+	ParentContext  context.Context
 }
 
 type Game struct {
@@ -34,7 +35,6 @@ type Game struct {
 	over           bool
 	score          *score.Score
 	lastUpdate     *int64
-	running        bool
 	rpg            *rng.Piece
 	ctx            context.Context
 	stop           context.CancelFunc
@@ -42,6 +42,7 @@ type Game struct {
 	mu             *sync.RWMutex
 	comm           *communication.Connection
 	bedrockChannel chan *Bedrock
+	parentContext  context.Context
 }
 
 type Payload struct {
@@ -54,7 +55,7 @@ func New(settings *Settings) *Game {
 	s := score.New()
 
 	g := Game{
-		id:             uuid.NewString(),
+		id:             settings.Id,
 		player:         settings.Player,
 		fallingPiece:   nil,
 		nextPiece:      nil,
@@ -64,12 +65,12 @@ func New(settings *Settings) *Game {
 		over:           false,
 		score:          s,
 		lastUpdate:     nil,
-		running:        false,
 		rpg:            rng.NewPiece(1234),
 		wg:             &sync.WaitGroup{},
 		mu:             &sync.RWMutex{},
 		comm:           settings.Connection,
 		bedrockChannel: settings.BedrockChannel,
+		parentContext:  settings.ParentContext,
 	}
 
 	return &g
@@ -81,14 +82,13 @@ func (g *Game) reset() {
 	g.holdingPiece = piece.NewLivingPiece(nil)
 	g.over = false
 	g.lastUpdate = nil
-	g.running = false
 
 	g.field.Reset()
 	g.score.Reset()
 
 	g.rpg.NextBag()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(g.parentContext)
 
 	g.ctx = ctx
 	g.stop = cancel
@@ -178,7 +178,7 @@ func (g *Game) doUpdate(delta int64) {
 			Origin: event.OriginGame(g.id),
 		})
 
-		g.Stop()
+		go g.Stop()
 	}
 }
 
@@ -207,8 +207,6 @@ func (g *Game) Start() {
 
 	g.startUpdater()
 	g.startCommandReader()
-
-	g.running = true
 }
 
 func (g *Game) Stop() {
@@ -217,6 +215,7 @@ func (g *Game) Stop() {
 
 	if g.stop != nil {
 		g.stop()
+		g.stop = nil
 	}
 
 	g.wg.Wait()
@@ -227,18 +226,11 @@ func (g *Game) startUpdater() {
 		defer g.wg.Done()
 		g.wg.Add(1)
 
-		ticker := time.NewTicker(time.Millisecond * 10) // 100 fps
-		defer ticker.Stop()
-
-		defer func() {
-			g.running = false
-		}()
-
 		for {
 			select {
 			case <-g.ctx.Done():
 				return
-			case <-ticker.C:
+			case <-time.After(time.Millisecond * 10): // 100 fps
 				g.Update()
 				break
 			}
@@ -251,19 +243,23 @@ func (g *Game) startCommandReader() {
 		defer g.wg.Done()
 		g.wg.Add(1)
 
-		ticker := time.NewTicker(time.Millisecond * 250)
-		defer ticker.Stop()
-
 		for {
 			select {
 			case <-g.ctx.Done():
 				return
-			case cmd := <-g.comm.GetInputChannel():
+			case cmd := <-g.comm.Input:
 				g.HandleCommand(Command(cmd))
 				break
-			case <-ticker.C:
+			case <-time.After(time.Millisecond * 250):
 				break
 			}
 		}
 	}()
+}
+
+func (g *Game) SendBedrock(amount int) {
+	defer g.mu.RUnlock()
+	g.mu.RLock()
+
+	g.field.IncreaseBedrock(amount)
 }

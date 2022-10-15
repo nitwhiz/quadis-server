@@ -11,7 +11,7 @@ const eventTypeAll = "*"
 type Handler func(event *Event)
 
 type Bus struct {
-	handlers      map[string][]Handler
+	handlers      map[string]map[string][]Handler
 	handlersMutex *sync.RWMutex
 	wg            *sync.WaitGroup
 	channel       chan *Event
@@ -19,11 +19,11 @@ type Bus struct {
 	stop          context.CancelFunc
 }
 
-func NewBus() *Bus {
-	ctx, cancel := context.WithCancel(context.Background())
+func NewBus(parentContext context.Context) *Bus {
+	ctx, cancel := context.WithCancel(parentContext)
 
 	b := Bus{
-		handlers:      map[string][]Handler{},
+		handlers:      map[string]map[string][]Handler{},
 		handlersMutex: &sync.RWMutex{},
 		wg:            &sync.WaitGroup{},
 		channel:       make(chan *Event, 256),
@@ -62,13 +62,15 @@ func (b *Bus) startListener() {
 }
 
 func (b *Bus) handleEvent(event *Event) {
-	b.handlersMutex.RLock()
 	defer b.handlersMutex.RUnlock()
+	b.handlersMutex.RLock()
 
 	for hType, handlers := range b.handlers {
 		if event.Type == hType || hType == eventTypeAll {
-			for _, handler := range handlers {
-				handler(event)
+			for _, subscriberHandlers := range handlers {
+				for _, handler := range subscriberHandlers {
+					handler(event)
+				}
 			}
 		}
 	}
@@ -80,20 +82,38 @@ func (b *Bus) Stop() {
 	b.wg.Wait()
 }
 
-func (b *Bus) SubscribeAll(handler Handler) {
-	// todo: unsubscribe based on some id
-	b.Subscribe(eventTypeAll, handler)
+func (b *Bus) SubscribeAll(handler Handler, subscriberId string) {
+	b.Subscribe(eventTypeAll, subscriberId, handler)
 }
 
-func (b *Bus) Subscribe(eventType string, handler Handler) {
-	b.handlersMutex.Lock()
+func (b *Bus) UnsubscribeAll(subscriberId string) {
+	b.Unsubscribe(eventTypeAll, subscriberId)
+}
+
+func (b *Bus) Subscribe(eventType string, subscriberId string, handler Handler) {
 	defer b.handlersMutex.Unlock()
+	b.handlersMutex.Lock()
 
 	if _, ok := b.handlers[eventType]; !ok {
-		b.handlers[eventType] = []Handler{}
+		b.handlers[eventType] = map[string][]Handler{}
 	}
 
-	b.handlers[eventType] = append(b.handlers[eventType], handler)
+	if _, ok := b.handlers[eventType][subscriberId]; !ok {
+		b.handlers[eventType][subscriberId] = []Handler{}
+	}
+
+	b.handlers[eventType][subscriberId] = append(b.handlers[eventType][subscriberId], handler)
+}
+
+func (b *Bus) Unsubscribe(eventType string, subscriberId string) {
+	defer b.handlersMutex.Unlock()
+	b.handlersMutex.Lock()
+
+	if _, ok := b.handlers[eventType]; ok {
+		if _, ok := b.handlers[eventType][subscriberId]; ok {
+			delete(b.handlers[eventType], subscriberId)
+		}
+	}
 }
 
 func (b *Bus) Publish(event *Event) {

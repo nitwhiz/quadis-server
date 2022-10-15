@@ -8,21 +8,19 @@ import (
 	"github.com/nitwhiz/quadis-server/pkg/event"
 	"github.com/nitwhiz/quadis-server/pkg/game"
 	"github.com/nitwhiz/quadis-server/pkg/player"
-	"log"
 	"sync"
-	"time"
 )
 
 type Room struct {
-	id             string
-	games          map[string]*game.Game
-	gamesMutex     *sync.RWMutex
-	bus            *event.Bus
-	wg             *sync.WaitGroup
-	mu             *sync.RWMutex
-	ctx            context.Context
-	stop           context.CancelFunc
-	bedrockChannel chan *game.Bedrock
+	id                  string
+	games               map[string]*game.Game
+	gamesMutex          *sync.RWMutex
+	bus                 *event.Bus
+	wg                  *sync.WaitGroup
+	mu                  *sync.RWMutex
+	ctx                 context.Context
+	stop                context.CancelFunc
+	bedrockDistribution *BedrockDistribution
 }
 
 type Payload struct {
@@ -40,23 +38,25 @@ type MessagePayload struct {
 }
 
 func New() *Room {
-	b := event.NewBus()
-
 	ctx, cancel := context.WithCancel(context.Background())
 
+	b := event.NewBus(ctx)
+
 	r := Room{
-		id:             uuid.NewString(),
-		games:          map[string]*game.Game{},
-		gamesMutex:     &sync.RWMutex{},
-		bus:            b,
-		wg:             &sync.WaitGroup{},
-		mu:             &sync.RWMutex{},
-		ctx:            ctx,
-		stop:           cancel,
-		bedrockChannel: make(chan *game.Bedrock, 16),
+		id:         uuid.NewString(),
+		games:      map[string]*game.Game{},
+		gamesMutex: &sync.RWMutex{},
+		bus:        b,
+		wg:         &sync.WaitGroup{},
+		mu:         &sync.RWMutex{},
+		ctx:        ctx,
+		stop:       cancel,
 	}
 
-	go r.startBedrockDistribution()
+	// I don't like this cyclic dependency
+	r.bedrockDistribution = NewBedrockDistribution(&r)
+
+	r.bedrockDistribution.Start()
 
 	return &r
 }
@@ -84,8 +84,39 @@ func (r *Room) GetId() string {
 	return r.id
 }
 
-func (r *Room) CreatePlayer(ws *websocket.Conn) error {
-	c := communication.NewConnection(ws)
+func (r *Room) RemoveGame(id string) {
+	r.gamesMutex.Lock()
+
+	if g, ok := r.games[id]; ok {
+		r.bus.UnsubscribeAll(id)
+
+		g.Stop()
+		delete(r.games, id)
+
+		r.bus.Publish(&event.Event{
+			Type:    event.TypeLeave,
+			Origin:  event.OriginRoom(r.GetId()),
+			Payload: g.ToPayload(),
+		})
+
+		r.gamesMutex.Unlock()
+
+		r.bedrockDistribution.Randomize()
+	} else {
+		r.gamesMutex.Unlock()
+	}
+}
+
+func (r *Room) CreateGame(ws *websocket.Conn) error {
+	gameId := uuid.NewString()
+
+	c := communication.NewConnection(&communication.Settings{
+		WS:            ws,
+		ParentContext: r.ctx,
+		PreStopCallback: func() {
+			r.RemoveGame(gameId)
+		},
+	})
 
 	hrm, err := r.HandshakeGreeting(c)
 
@@ -93,27 +124,27 @@ func (r *Room) CreatePlayer(ws *websocket.Conn) error {
 		return err
 	}
 
-	log.Printf("%+v\n", hrm)
-
 	p := player.New(hrm.PlayerName)
 	g := game.New(&game.Settings{
+		Id:             gameId,
 		EventBus:       r.bus,
 		Connection:     c,
 		Player:         p,
-		BedrockChannel: r.bedrockChannel,
+		BedrockChannel: r.bedrockDistribution.Channel,
+		ParentContext:  r.ctx,
 	})
 
 	r.mu.Lock()
-	r.games[g.GetId()] = g
+	r.games[gameId] = g
 	r.mu.Unlock()
 
 	err = r.HandshakeAck(c, g, false)
 
 	r.bus.SubscribeAll(func(event *event.Event) {
-		// todo: serialization can happen once for broadcasts
+		// todo: specialize event bus more, support broadcasting
 		msg, _ := event.Serialize()
 		c.Write(msg)
-	})
+	}, gameId)
 
 	r.bus.Publish(&event.Event{
 		Type:    event.TypeJoin,
@@ -121,28 +152,13 @@ func (r *Room) CreatePlayer(ws *websocket.Conn) error {
 		Payload: g.ToPayload(),
 	})
 
+	r.bedrockDistribution.Randomize()
+
 	if err != nil {
 		return err
 	}
 
 	return nil
-}
-
-func (r *Room) startBedrockDistribution() {
-	defer r.wg.Done()
-	r.wg.Add(1)
-
-	for {
-		// avoid game lock up
-		time.Sleep(time.Millisecond * 2)
-
-		select {
-		case <-r.ctx.Done():
-			return
-		case b := <-r.bedrockChannel:
-			log.Printf("distributing %d bedrock from %s\n", b.Amount, b.SourceId)
-		}
-	}
 }
 
 func (r *Room) Start() {
