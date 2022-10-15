@@ -11,30 +11,37 @@ import (
 	"github.com/nitwhiz/quadis-server/pkg/player"
 	"github.com/nitwhiz/quadis-server/pkg/rng"
 	"github.com/nitwhiz/quadis-server/pkg/score"
-	"log"
 	"math"
 	"sync"
 	"time"
 )
 
+type Settings struct {
+	EventBus       *event.Bus
+	Connection     *communication.Connection
+	Player         *player.Player
+	BedrockChannel chan *Bedrock
+}
+
 type Game struct {
-	id           string
-	player       *player.Player
-	fallingPiece *falling_piece.FallingPiece
-	nextPiece    *piece.LivingPiece
-	holdingPiece *piece.LivingPiece
-	field        *field.Field
-	bus          *event.Bus
-	over         bool
-	score        *score.Score
-	lastUpdate   *int64
-	running      bool
-	rpg          *rng.Piece
-	ctx          context.Context
-	stop         context.CancelFunc
-	wg           *sync.WaitGroup
-	mu           *sync.RWMutex
-	comm         *communication.Connection
+	id             string
+	player         *player.Player
+	fallingPiece   *falling_piece.FallingPiece
+	nextPiece      *piece.LivingPiece
+	holdingPiece   *piece.LivingPiece
+	field          *field.Field
+	bus            *event.Bus
+	over           bool
+	score          *score.Score
+	lastUpdate     *int64
+	running        bool
+	rpg            *rng.Piece
+	ctx            context.Context
+	stop           context.CancelFunc
+	wg             *sync.WaitGroup
+	mu             *sync.RWMutex
+	comm           *communication.Connection
+	bedrockChannel chan *Bedrock
 }
 
 type Payload struct {
@@ -42,26 +49,27 @@ type Payload struct {
 	PlayerName string `json:"playerName"`
 }
 
-func New(bus *event.Bus, c *communication.Connection, player *player.Player) *Game {
+func New(settings *Settings) *Game {
 	f := field.New()
 	s := score.New()
 
 	g := Game{
-		id:           uuid.NewString(),
-		player:       player,
-		fallingPiece: nil,
-		nextPiece:    nil,
-		holdingPiece: nil,
-		field:        f,
-		bus:          bus,
-		over:         false,
-		score:        s,
-		lastUpdate:   nil,
-		running:      false,
-		rpg:          rng.NewPiece(1234),
-		wg:           &sync.WaitGroup{},
-		mu:           &sync.RWMutex{},
-		comm:         c,
+		id:             uuid.NewString(),
+		player:         settings.Player,
+		fallingPiece:   nil,
+		nextPiece:      nil,
+		holdingPiece:   nil,
+		field:          f,
+		bus:            settings.EventBus,
+		over:           false,
+		score:          s,
+		lastUpdate:     nil,
+		running:        false,
+		rpg:            rng.NewPiece(1234),
+		wg:             &sync.WaitGroup{},
+		mu:             &sync.RWMutex{},
+		comm:           settings.Connection,
+		bedrockChannel: settings.BedrockChannel,
 	}
 
 	return &g
@@ -114,8 +122,11 @@ func (g *Game) doUpdate(delta int64) {
 
 		if newBedrockLevel == 0 {
 			distributableBedrock := int(math.Max(float64(clearedLines-oldBedrockLevel), 0))
-			log.Printf("can distribute %d bedrock\n", distributableBedrock)
-			// todo: distribute bedrock
+
+			g.bedrockChannel <- &Bedrock{
+				Amount:   distributableBedrock,
+				SourceId: g.id,
+			}
 		}
 	}
 
@@ -204,7 +215,10 @@ func (g *Game) Stop() {
 	defer g.mu.RUnlock()
 	g.mu.RLock()
 
-	g.stop()
+	if g.stop != nil {
+		g.stop()
+	}
+
 	g.wg.Wait()
 }
 
@@ -223,7 +237,7 @@ func (g *Game) startUpdater() {
 		for {
 			select {
 			case <-g.ctx.Done():
-				break
+				return
 			case <-ticker.C:
 				g.Update()
 				break
@@ -243,7 +257,7 @@ func (g *Game) startCommandReader() {
 		for {
 			select {
 			case <-g.ctx.Done():
-				break
+				return
 			case cmd := <-g.comm.GetInputChannel():
 				g.HandleCommand(Command(cmd))
 				break

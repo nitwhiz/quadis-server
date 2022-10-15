@@ -1,6 +1,7 @@
 package room
 
 import (
+	"context"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/nitwhiz/quadis-server/pkg/communication"
@@ -9,15 +10,19 @@ import (
 	"github.com/nitwhiz/quadis-server/pkg/player"
 	"log"
 	"sync"
+	"time"
 )
 
 type Room struct {
-	id         string
-	games      map[string]*game.Game
-	gamesMutex *sync.RWMutex
-	bus        *event.Bus
-	wg         *sync.WaitGroup
-	mu         *sync.RWMutex
+	id             string
+	games          map[string]*game.Game
+	gamesMutex     *sync.RWMutex
+	bus            *event.Bus
+	wg             *sync.WaitGroup
+	mu             *sync.RWMutex
+	ctx            context.Context
+	stop           context.CancelFunc
+	bedrockChannel chan *game.Bedrock
 }
 
 type Payload struct {
@@ -37,14 +42,23 @@ type MessagePayload struct {
 func New() *Room {
 	b := event.NewBus()
 
-	return &Room{
-		id:         uuid.NewString(),
-		games:      map[string]*game.Game{},
-		gamesMutex: &sync.RWMutex{},
-		bus:        b,
-		wg:         &sync.WaitGroup{},
-		mu:         &sync.RWMutex{},
+	ctx, cancel := context.WithCancel(context.Background())
+
+	r := Room{
+		id:             uuid.NewString(),
+		games:          map[string]*game.Game{},
+		gamesMutex:     &sync.RWMutex{},
+		bus:            b,
+		wg:             &sync.WaitGroup{},
+		mu:             &sync.RWMutex{},
+		ctx:            ctx,
+		stop:           cancel,
+		bedrockChannel: make(chan *game.Bedrock, 16),
 	}
+
+	go r.startBedrockDistribution()
+
+	return &r
 }
 
 func (r *Room) ToPayload() *Payload {
@@ -82,7 +96,12 @@ func (r *Room) CreatePlayer(ws *websocket.Conn) error {
 	log.Printf("%+v\n", hrm)
 
 	p := player.New(hrm.PlayerName)
-	g := game.New(r.bus, c, p)
+	g := game.New(&game.Settings{
+		EventBus:       r.bus,
+		Connection:     c,
+		Player:         p,
+		BedrockChannel: r.bedrockChannel,
+	})
 
 	r.mu.Lock()
 	r.games[g.GetId()] = g
@@ -109,6 +128,23 @@ func (r *Room) CreatePlayer(ws *websocket.Conn) error {
 	return nil
 }
 
+func (r *Room) startBedrockDistribution() {
+	defer r.wg.Done()
+	r.wg.Add(1)
+
+	for {
+		// avoid game lock up
+		time.Sleep(time.Millisecond * 2)
+
+		select {
+		case <-r.ctx.Done():
+			return
+		case b := <-r.bedrockChannel:
+			log.Printf("distributing %d bedrock from %s\n", b.Amount, b.SourceId)
+		}
+	}
+}
+
 func (r *Room) Start() {
 	defer r.gamesMutex.RUnlock()
 	r.gamesMutex.RLock()
@@ -119,6 +155,22 @@ func (r *Room) Start() {
 	})
 
 	for _, g := range r.games {
+		g.Stop()
 		g.Start()
 	}
+}
+
+func (r *Room) Stop() {
+	defer r.gamesMutex.RUnlock()
+	r.gamesMutex.RLock()
+
+	defer r.mu.Unlock()
+	r.mu.Lock()
+
+	for _, g := range r.games {
+		g.Stop()
+	}
+
+	r.stop()
+	r.wg.Wait()
 }
