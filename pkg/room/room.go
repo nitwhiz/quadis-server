@@ -88,7 +88,7 @@ func (r *Room) RemoveGame(id string) {
 	r.gamesMutex.Lock()
 
 	if g, ok := r.games[id]; ok {
-		r.bus.UnsubscribeAll(id)
+		r.bus.Unsubscribe(id)
 
 		g.Stop()
 		delete(r.games, id)
@@ -140,11 +140,7 @@ func (r *Room) CreateGame(ws *websocket.Conn) error {
 
 	err = r.HandshakeAck(c, g, false)
 
-	r.bus.SubscribeAll(func(event *event.Event) {
-		// todo: specialize event bus more, support broadcasting
-		msg, _ := event.Serialize()
-		c.Write(msg)
-	}, gameId)
+	r.bus.Subscribe(gameId, c)
 
 	r.bus.Publish(&event.Event{
 		Type:    event.TypeJoin,

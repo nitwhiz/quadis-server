@@ -2,33 +2,34 @@ package event
 
 import (
 	"context"
+	"github.com/nitwhiz/quadis-server/pkg/communication"
+	"log"
 	"sync"
 	"time"
 )
 
-const eventTypeAll = "*"
-
 type Handler func(event *Event)
 
 type Bus struct {
-	handlers      map[string]map[string][]Handler
-	handlersMutex *sync.RWMutex
-	wg            *sync.WaitGroup
-	channel       chan *Event
-	ctx           context.Context
-	stop          context.CancelFunc
+	connections      map[string]*communication.Connection
+	connectionsMutex *sync.RWMutex
+	wg               *sync.WaitGroup
+	channel          chan *Event
+	ctx              context.Context
+	stop             context.CancelFunc
 }
 
+// NewBus returns an event bus made for broadcasting events to websocket connections
 func NewBus(parentContext context.Context) *Bus {
 	ctx, cancel := context.WithCancel(parentContext)
 
 	b := Bus{
-		handlers:      map[string]map[string][]Handler{},
-		handlersMutex: &sync.RWMutex{},
-		wg:            &sync.WaitGroup{},
-		channel:       make(chan *Event, 256),
-		ctx:           ctx,
-		stop:          cancel,
+		connections:      map[string]*communication.Connection{},
+		connectionsMutex: &sync.RWMutex{},
+		wg:               &sync.WaitGroup{},
+		channel:          make(chan *Event, 256),
+		ctx:              ctx,
+		stop:             cancel,
 	}
 
 	b.startListener()
@@ -62,19 +63,19 @@ func (b *Bus) startListener() {
 }
 
 func (b *Bus) handleEvent(event *Event) {
-	defer b.handlersMutex.RUnlock()
-	b.handlersMutex.RLock()
+	defer b.connectionsMutex.RUnlock()
+	b.connectionsMutex.RLock()
 
-	for hType, handlers := range b.handlers {
-		if event.Type == hType || hType == eventTypeAll {
-			for _, subscriberHandlers := range handlers {
-				for _, handler := range subscriberHandlers {
-					handler(event)
-				}
-			}
-		}
+	sMsg, err := event.Serialize()
+
+	if err != nil {
+		log.Printf("serialization error: %s, ignoring.\n", err)
+		return
 	}
 
+	for _, conn := range b.connections {
+		conn.Write(sMsg)
+	}
 }
 
 func (b *Bus) Stop() {
@@ -82,37 +83,19 @@ func (b *Bus) Stop() {
 	b.wg.Wait()
 }
 
-func (b *Bus) SubscribeAll(handler Handler, subscriberId string) {
-	b.Subscribe(eventTypeAll, subscriberId, handler)
+func (b *Bus) Subscribe(subscriberId string, conn *communication.Connection) {
+	defer b.connectionsMutex.Unlock()
+	b.connectionsMutex.Lock()
+
+	b.connections[subscriberId] = conn
 }
 
-func (b *Bus) UnsubscribeAll(subscriberId string) {
-	b.Unsubscribe(eventTypeAll, subscriberId)
-}
+func (b *Bus) Unsubscribe(subscriberId string) {
+	defer b.connectionsMutex.Unlock()
+	b.connectionsMutex.Lock()
 
-func (b *Bus) Subscribe(eventType string, subscriberId string, handler Handler) {
-	defer b.handlersMutex.Unlock()
-	b.handlersMutex.Lock()
-
-	if _, ok := b.handlers[eventType]; !ok {
-		b.handlers[eventType] = map[string][]Handler{}
-	}
-
-	if _, ok := b.handlers[eventType][subscriberId]; !ok {
-		b.handlers[eventType][subscriberId] = []Handler{}
-	}
-
-	b.handlers[eventType][subscriberId] = append(b.handlers[eventType][subscriberId], handler)
-}
-
-func (b *Bus) Unsubscribe(eventType string, subscriberId string) {
-	defer b.handlersMutex.Unlock()
-	b.handlersMutex.Lock()
-
-	if _, ok := b.handlers[eventType]; ok {
-		if _, ok := b.handlers[eventType][subscriberId]; ok {
-			delete(b.handlers[eventType], subscriberId)
-		}
+	if _, ok := b.connections[subscriberId]; ok {
+		delete(b.connections, subscriberId)
 	}
 }
 
