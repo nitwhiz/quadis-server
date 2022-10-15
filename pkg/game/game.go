@@ -76,6 +76,13 @@ func New(settings *Settings) *Game {
 	return &g
 }
 
+func (g *Game) IsOver() bool {
+	defer g.mu.RUnlock()
+	g.mu.RLock()
+
+	return g.over
+}
+
 func (g *Game) reset() {
 	g.fallingPiece = nil
 	g.nextPiece = nil

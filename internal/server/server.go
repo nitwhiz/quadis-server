@@ -68,7 +68,7 @@ func (s *Server) connect(roomId string, resp http.ResponseWriter, req *http.Requ
 		return errors.New("room_not_found")
 	}
 
-	// todo: if room is already active
+	// todo: send room_has_running_games if room's games are already running
 
 	return r.CreateGame(conn)
 }

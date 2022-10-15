@@ -17,6 +17,7 @@ type BedrockDistribution struct {
 	ctx             context.Context
 	room            *Room
 	mu              *sync.RWMutex
+	random          *rng.Basic
 }
 
 func NewBedrockDistribution(room *Room) *BedrockDistribution {
@@ -27,7 +28,9 @@ func NewBedrockDistribution(room *Room) *BedrockDistribution {
 		var gameIds []string
 
 		for _, g := range room.games {
-			gameIds = append(gameIds, g.GetId())
+			if !g.IsOver() {
+				gameIds = append(gameIds, g.GetId())
+			}
 		}
 
 		return gameIds
@@ -41,6 +44,7 @@ func NewBedrockDistribution(room *Room) *BedrockDistribution {
 		ctx:             room.ctx,
 		room:            room,
 		mu:              &sync.RWMutex{},
+		random:          rng.NewBasic(1234),
 	}
 
 	return &d
@@ -48,8 +52,6 @@ func NewBedrockDistribution(room *Room) *BedrockDistribution {
 
 func (d *BedrockDistribution) startDistribution() {
 	for {
-		// avoid lock up
-		time.Sleep(time.Millisecond * 1)
 
 		select {
 		case <-d.ctx.Done():
@@ -70,6 +72,10 @@ func (d *BedrockDistribution) startDistribution() {
 			}
 
 			d.mu.RUnlock()
+
+			// avoid lock up
+			time.Sleep(time.Microsecond * 250)
+			break
 		}
 	}
 }
@@ -94,15 +100,33 @@ func (d *BedrockDistribution) Randomize() {
 	defer d.mu.Unlock()
 	d.mu.Lock()
 
-	// todo: add probability to choose no player as target
-	// todo: never choose game over player as target
+	d.targetMap = map[string]string{}
 
 	d.randomGameIdBag.NextBag()
 
 	bSize := d.randomGameIdBag.GetSize()
 
-	for i := 0; i < bSize*2; i++ {
-		d.targetMap[d.randomGameIdBag.NextElement()] = d.randomGameIdBag.NextElement()
+	if bSize <= 1 {
+		return
+	}
+
+	for i := 0; i < bSize; i++ {
+		randomId := d.randomGameIdBag.NextElement()
+
+		d.targetMap[randomId] = randomId
+	}
+
+	// just to be extra sure: new bag
+	d.randomGameIdBag.NextBag()
+
+	for id := range d.targetMap {
+		target := d.randomGameIdBag.NextElement()
+
+		if d.random.Probably(.25) {
+			continue
+		}
+
+		d.targetMap[id] = target
 	}
 
 	d.bus.Publish(&event.Event{
