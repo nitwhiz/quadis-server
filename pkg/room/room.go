@@ -54,7 +54,7 @@ func New() *Room {
 	}
 
 	// I don't like this cyclic dependency
-	r.bedrockDistribution = NewBedrockDistribution(&r)
+	r.bedrockDistribution = NewBedrockDistribution(&r, 1234)
 
 	r.bedrockDistribution.Start()
 
@@ -132,6 +132,7 @@ func (r *Room) CreateGame(ws *websocket.Conn) error {
 		Player:         p,
 		BedrockChannel: r.bedrockDistribution.Channel,
 		ParentContext:  r.ctx,
+		Seed:           1234,
 	})
 
 	r.mu.Lock()

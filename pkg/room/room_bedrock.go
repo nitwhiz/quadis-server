@@ -20,7 +20,7 @@ type BedrockDistribution struct {
 	random          *rng.Basic
 }
 
-func NewBedrockDistribution(room *Room) *BedrockDistribution {
+func NewBedrockDistribution(room *Room, seed int64) *BedrockDistribution {
 	gameIdBagGenerator := func() []string {
 		defer room.gamesMutex.RUnlock()
 		room.gamesMutex.RLock()
@@ -38,13 +38,13 @@ func NewBedrockDistribution(room *Room) *BedrockDistribution {
 
 	d := BedrockDistribution{
 		Channel:         make(chan *game.Bedrock, 64),
-		randomGameIdBag: rng.NewString(1234, gameIdBagGenerator),
+		randomGameIdBag: rng.NewString(seed, gameIdBagGenerator),
 		targetMap:       map[string]string{},
 		bus:             room.bus,
 		ctx:             room.ctx,
 		room:            room,
 		mu:              &sync.RWMutex{},
-		random:          rng.NewBasic(1234),
+		random:          rng.NewBasic(seed),
 	}
 
 	return &d
@@ -52,7 +52,6 @@ func NewBedrockDistribution(room *Room) *BedrockDistribution {
 
 func (d *BedrockDistribution) startDistribution() {
 	for {
-
 		select {
 		case <-d.ctx.Done():
 			return

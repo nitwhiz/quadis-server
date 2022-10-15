@@ -22,6 +22,7 @@ type Settings struct {
 	Player         *player.Player
 	BedrockChannel chan *Bedrock
 	ParentContext  context.Context
+	Seed           int64
 }
 
 type Game struct {
@@ -65,7 +66,7 @@ func New(settings *Settings) *Game {
 		over:           false,
 		score:          s,
 		lastUpdate:     nil,
-		rpg:            rng.NewPiece(1234),
+		rpg:            rng.NewPiece(settings.Seed),
 		wg:             &sync.WaitGroup{},
 		mu:             &sync.RWMutex{},
 		comm:           settings.Connection,
