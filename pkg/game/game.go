@@ -15,6 +15,8 @@ import (
 	"time"
 )
 
+type OverCallback func()
+
 type Settings struct {
 	Id             string
 	EventBus       *event.Bus
@@ -23,6 +25,7 @@ type Settings struct {
 	BedrockChannel chan *Bedrock
 	ParentContext  context.Context
 	Seed           int64
+	OverCallback   OverCallback
 }
 
 type Game struct {
@@ -41,9 +44,9 @@ type Game struct {
 	stop           context.CancelFunc
 	wg             *sync.WaitGroup
 	mu             *sync.RWMutex
-	comm           *communication.Connection
+	con            *communication.Connection
 	bedrockChannel chan *Bedrock
-	parentContext  context.Context
+	overCallback   OverCallback
 }
 
 type Payload struct {
@@ -54,6 +57,8 @@ type Payload struct {
 func New(settings *Settings) *Game {
 	f := field.New()
 	s := score.New()
+
+	ctx, cancel := context.WithCancel(settings.ParentContext)
 
 	g := Game{
 		id:             settings.Id,
@@ -69,12 +74,31 @@ func New(settings *Settings) *Game {
 		rpg:            rng.NewPiece(settings.Seed),
 		wg:             &sync.WaitGroup{},
 		mu:             &sync.RWMutex{},
-		comm:           settings.Connection,
+		con:            settings.Connection,
 		bedrockChannel: settings.BedrockChannel,
-		parentContext:  settings.ParentContext,
+		ctx:            ctx,
+		stop:           cancel,
+		overCallback:   settings.OverCallback,
 	}
 
+	go g.startCommandReader()
+	go g.startUpdater()
+
 	return &g
+}
+
+func (g *Game) GetScore() *score.Score {
+	defer g.mu.RUnlock()
+	g.mu.RLock()
+
+	return g.score
+}
+
+func (g *Game) GetPlayer() *player.Player {
+	defer g.mu.RUnlock()
+	g.mu.RLock()
+
+	return g.player
 }
 
 func (g *Game) IsOver() bool {
@@ -95,11 +119,6 @@ func (g *Game) reset() {
 	g.score.Reset()
 
 	g.rpg.NextBag()
-
-	ctx, cancel := context.WithCancel(g.parentContext)
-
-	g.ctx = ctx
-	g.stop = cancel
 }
 
 func (g *Game) ToPayload() *Payload {
@@ -179,24 +198,22 @@ func (g *Game) doUpdate(delta int64) {
 	}
 
 	if gameOver {
-		g.over = true
-
 		g.bus.Publish(&event.Event{
 			Type:   event.TypeGameOver,
 			Origin: event.OriginGame(g.id),
 		})
 
-		go g.Stop()
+		go g.ToggleOver()
 	}
 }
 
 func (g *Game) Update() {
-	defer g.mu.Unlock()
-	g.mu.Lock()
-
-	if g.over {
+	if g.IsOver() {
 		return
 	}
+
+	defer g.mu.Unlock()
+	g.mu.Lock()
 
 	now := time.Now().UnixMilli()
 
@@ -214,59 +231,58 @@ func (g *Game) Start() {
 	g.reset()
 
 	g.over = false
-
-	g.startUpdater()
-	g.startCommandReader()
 }
 
-func (g *Game) Stop() {
-	defer g.mu.RUnlock()
-	g.mu.RLock()
+// ToggleOver sets over to true
+func (g *Game) ToggleOver() {
+	defer g.mu.Unlock()
+	g.mu.Lock()
 
-	if g.stop != nil {
-		g.stop()
-		g.stop = nil
+	if g.over != true {
+		go g.overCallback()
 	}
 
 	g.over = true
+}
+
+func (g *Game) Stop() {
+	if g.stop != nil {
+		g.stop()
+	}
 
 	g.wg.Wait()
 }
 
 func (g *Game) startUpdater() {
-	go func() {
-		defer g.wg.Done()
-		g.wg.Add(1)
+	defer g.wg.Done()
+	g.wg.Add(1)
 
-		for {
-			select {
-			case <-g.ctx.Done():
-				return
-			case <-time.After(time.Millisecond * 10): // 100 fps
-				g.Update()
-				break
-			}
+	for {
+		select {
+		case <-g.ctx.Done():
+			return
+		case <-time.After(time.Millisecond * 10): // 100 fps
+			g.Update()
+			break
 		}
-	}()
+	}
 }
 
 func (g *Game) startCommandReader() {
-	go func() {
-		defer g.wg.Done()
-		g.wg.Add(1)
+	defer g.wg.Done()
+	g.wg.Add(1)
 
-		for {
-			select {
-			case <-g.ctx.Done():
-				return
-			case cmd := <-g.comm.Input:
-				g.HandleCommand(Command(cmd))
-				break
-			case <-time.After(time.Millisecond * 250):
-				break
-			}
+	for {
+		select {
+		case <-g.ctx.Done():
+			return
+		case cmd := <-g.con.GetInputChannel():
+			g.HandleCommand(Command(cmd))
+			break
+		case <-time.After(time.Millisecond * 250):
+			break
 		}
-	}()
+	}
 }
 
 func (g *Game) SendBedrock(amount int) {

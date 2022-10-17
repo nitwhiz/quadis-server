@@ -3,12 +3,10 @@ package room
 import (
 	"context"
 	"github.com/google/uuid"
-	"github.com/gorilla/websocket"
-	"github.com/nitwhiz/quadis-server/pkg/communication"
 	"github.com/nitwhiz/quadis-server/pkg/event"
 	"github.com/nitwhiz/quadis-server/pkg/game"
-	"github.com/nitwhiz/quadis-server/pkg/player"
 	"sync"
+	"time"
 )
 
 type Room struct {
@@ -21,6 +19,9 @@ type Room struct {
 	ctx                 context.Context
 	stop                context.CancelFunc
 	bedrockDistribution *BedrockDistribution
+	gamesStarted        bool
+	gameOverCount       int
+	createdAt           *time.Time
 }
 
 type Payload struct {
@@ -42,15 +43,20 @@ func New() *Room {
 
 	b := event.NewBus(ctx)
 
+	now := time.Now()
+
 	r := Room{
-		id:         uuid.NewString(),
-		games:      map[string]*game.Game{},
-		gamesMutex: &sync.RWMutex{},
-		bus:        b,
-		wg:         &sync.WaitGroup{},
-		mu:         &sync.RWMutex{},
-		ctx:        ctx,
-		stop:       cancel,
+		id:            uuid.NewString(),
+		games:         map[string]*game.Game{},
+		gamesMutex:    &sync.RWMutex{},
+		bus:           b,
+		wg:            &sync.WaitGroup{},
+		mu:            &sync.RWMutex{},
+		ctx:           ctx,
+		stop:          cancel,
+		gamesStarted:  false,
+		createdAt:     &now,
+		gameOverCount: 0,
 	}
 
 	// I don't like this cyclic dependency
@@ -84,86 +90,6 @@ func (r *Room) GetId() string {
 	return r.id
 }
 
-func (r *Room) RemoveGame(id string) {
-	r.gamesMutex.Lock()
-
-	if g, ok := r.games[id]; ok {
-		r.bus.Unsubscribe(id)
-
-		g.Stop()
-		delete(r.games, id)
-
-		r.bus.Publish(&event.Event{
-			Type:    event.TypeLeave,
-			Origin:  event.OriginRoom(r.GetId()),
-			Payload: g.ToPayload(),
-		})
-
-		r.gamesMutex.Unlock()
-
-		r.bedrockDistribution.Randomize()
-	} else {
-		r.gamesMutex.Unlock()
-	}
-}
-
-func (r *Room) CreateGame(ws *websocket.Conn) error {
-	gameId := uuid.NewString()
-
-	c := communication.NewConnection(&communication.Settings{
-		WS:            ws,
-		ParentContext: r.ctx,
-		PreStopCallback: func() {
-			r.RemoveGame(gameId)
-		},
-	})
-
-	hrm, err := r.HandshakeGreeting(c)
-
-	if err != nil {
-		return err
-	}
-
-	g := game.New(&game.Settings{
-		Id:             gameId,
-		EventBus:       r.bus,
-		Connection:     c,
-		Player:         player.New(hrm.PlayerName),
-		BedrockChannel: r.bedrockDistribution.Channel,
-		ParentContext:  r.ctx,
-		Seed:           1234,
-	})
-
-	isHost := false
-
-	r.gamesMutex.Lock()
-
-	// this is not 100% correct, but it's correct enough
-	isHost = len(r.games) == 0
-
-	r.games[gameId] = g
-
-	r.gamesMutex.Unlock()
-
-	err = r.HandshakeAck(c, g, isHost)
-
-	r.bus.Subscribe(gameId, c)
-
-	r.bus.Publish(&event.Event{
-		Type:    event.TypeJoin,
-		Origin:  event.OriginRoom(r.GetId()),
-		Payload: g.ToPayload(),
-	})
-
-	r.bedrockDistribution.Randomize()
-
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func (r *Room) Start() {
 	defer r.gamesMutex.RUnlock()
 	r.gamesMutex.RLock()
@@ -174,21 +100,31 @@ func (r *Room) Start() {
 	})
 
 	for _, g := range r.games {
-		g.Stop()
 		g.Start()
 	}
+
+	r.gamesStarted = true
 }
 
-func (r *Room) Stop() {
+func (r *Room) StopGames() {
 	defer r.gamesMutex.RUnlock()
 	r.gamesMutex.RLock()
+
+	for _, g := range r.games {
+		g.ToggleOver()
+	}
 
 	defer r.mu.Unlock()
 	r.mu.Lock()
 
-	for _, g := range r.games {
-		g.Stop()
-	}
+	r.gamesStarted = false
+}
+
+func (r *Room) Stop() {
+	r.StopGames()
+
+	defer r.mu.Unlock()
+	r.mu.Lock()
 
 	r.stop()
 	r.wg.Wait()

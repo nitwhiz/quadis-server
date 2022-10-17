@@ -32,34 +32,32 @@ func NewBus(parentContext context.Context) *Bus {
 		stop:             cancel,
 	}
 
-	b.startListener()
+	go b.startListener()
 
 	return &b
 }
 
 func (b *Bus) startListener() {
-	go func() {
-		defer b.wg.Done()
-		b.wg.Add(1)
+	defer b.wg.Done()
+	b.wg.Add(1)
 
-		for {
-			select {
-			case <-b.ctx.Done():
-				return
-			case event := <-b.channel:
-				go func() {
-					defer b.wg.Done()
-					b.wg.Add(1)
+	for {
+		select {
+		case <-b.ctx.Done():
+			return
+		case event := <-b.channel:
+			go func() {
+				defer b.wg.Done()
+				b.wg.Add(1)
 
-					b.handleEvent(event)
-				}()
+				b.handleEvent(event)
+			}()
 
-				break
-			case <-time.After(time.Millisecond * 10):
-				break
-			}
+			break
+		case <-time.After(time.Millisecond * 10):
+			break
 		}
-	}()
+	}
 }
 
 func (b *Bus) handleEvent(event *Event) {

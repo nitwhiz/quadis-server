@@ -19,7 +19,7 @@ type Connection struct {
 	readMutex       *sync.Mutex
 	writeMutex      *sync.Mutex
 	output          chan string
-	Input           chan string
+	input           chan string
 	isStopping      bool
 	preStopCallback PreStopCallback
 }
@@ -41,7 +41,7 @@ func NewConnection(settings *Settings) *Connection {
 		readMutex:       &sync.Mutex{},
 		writeMutex:      &sync.Mutex{},
 		output:          make(chan string, 256),
-		Input:           make(chan string, 256),
+		input:           make(chan string, 256),
 		isStopping:      false,
 		preStopCallback: settings.PreStopCallback,
 	}
@@ -123,7 +123,8 @@ func (c *Connection) startReader() {
 			return
 		case <-time.After(time.Microsecond * 250):
 			if msg, err := c.tryRead(); msg != "" && err == nil {
-				c.Input <- msg
+				// todo: this channel is flood-able when nobody listens
+				c.input <- msg
 			} else if err != nil {
 				go c.Stop()
 				return
@@ -196,9 +197,13 @@ func (c *Connection) tryWrite(msg string) error {
 	return nil
 }
 
+func (c *Connection) GetInputChannel() chan string {
+	return c.input
+}
+
 // Read blocks until there is an unread message from the websocket
 func (c *Connection) Read() string {
-	return <-c.Input
+	return <-c.input
 }
 
 // Write enqueues the message to be sent to the websocket, blocks if too many messages are enqueued

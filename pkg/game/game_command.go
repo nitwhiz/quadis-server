@@ -10,6 +10,10 @@ const CommandHardLock = Command("P")
 const CommandHold = Command("H")
 
 func (g *Game) HandleCommand(cmd Command) {
+	if g.IsOver() {
+		return
+	}
+
 	switch cmd {
 	case CommandLeft:
 		g.tryTranslateFallingPiece(0, -1, 0)
