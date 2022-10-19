@@ -149,8 +149,8 @@ func (c *Connection) tryRead() (string, error) {
 	}
 
 	if err != nil {
-		log.Printf("conn read error: %s, ignoring.\n", err)
-		return "", nil
+		log.Printf("conn read error: %s.\n", err)
+		return "", err
 	}
 
 	if t == websocket.TextMessage {
@@ -191,7 +191,8 @@ func (c *Connection) tryWrite(msg string) error {
 	}
 
 	if err != nil {
-		log.Printf("conn write error: %s, ignoring.\n", err)
+		log.Printf("conn write error: %s.\n", err)
+		return err
 	}
 
 	return nil
