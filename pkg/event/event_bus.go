@@ -17,6 +17,7 @@ type Bus struct {
 	channel          chan *Event
 	ctx              context.Context
 	stop             context.CancelFunc
+	window           *Window
 }
 
 // NewBus returns an event bus made for broadcasting events to websocket connections
@@ -32,9 +33,35 @@ func NewBus(parentContext context.Context) *Bus {
 		stop:             cancel,
 	}
 
+	b.window = NewWindow(ctx, b.windowClosedCallback)
+
 	go b.startListener()
 
 	return &b
+}
+
+func (b *Bus) windowClosedCallback(events []*Event) {
+	winEvent := &Event{
+		Type:   TypeWindow,
+		Origin: OriginSystem(),
+		Payload: &WindowPayload{
+			Events: events,
+		},
+	}
+
+	sMsg, err := winEvent.Serialize()
+
+	if err != nil {
+		log.Printf("serialization error: %s, ignoring.\n", err)
+		return
+	}
+
+	defer b.connectionsMutex.RUnlock()
+	b.connectionsMutex.RLock()
+
+	for _, conn := range b.connections {
+		conn.Write(sMsg)
+	}
 }
 
 func (b *Bus) startListener() {
@@ -46,12 +73,7 @@ func (b *Bus) startListener() {
 		case <-b.ctx.Done():
 			return
 		case event := <-b.channel:
-			go func() {
-				defer b.wg.Done()
-				b.wg.Add(1)
-
-				b.handleEvent(event)
-			}()
+			b.window.Add(event)
 
 			break
 		case <-time.After(time.Millisecond * 10):
@@ -61,19 +83,7 @@ func (b *Bus) startListener() {
 }
 
 func (b *Bus) handleEvent(event *Event) {
-	defer b.connectionsMutex.RUnlock()
-	b.connectionsMutex.RLock()
-
-	sMsg, err := event.Serialize()
-
-	if err != nil {
-		log.Printf("serialization error: %s, ignoring.\n", err)
-		return
-	}
-
-	for _, conn := range b.connections {
-		conn.Write(sMsg)
-	}
+	b.window.Add(event)
 }
 
 func (b *Bus) Stop() {

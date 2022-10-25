@@ -16,3 +16,5 @@ const TypeNextPieceUpdate = "next_piece_update"
 const TypeScoreUpdate = "score_update"
 const TypeGameOver = "game_over"
 const TypeRoomScores = "room_scores"
+
+const TypeWindow = "window"

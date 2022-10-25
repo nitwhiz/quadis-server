@@ -15,6 +15,10 @@ type Event struct {
 	Payload any     `json:"payload"`
 }
 
+type WindowPayload struct {
+	Events []*Event `json:"events"`
+}
+
 func (e *Event) Serialize() (string, error) {
 	bs, err := json.Marshal(e)
 
