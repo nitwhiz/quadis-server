@@ -6,6 +6,7 @@ import (
 	"github.com/nitwhiz/quadis-server/pkg/communication"
 	"github.com/nitwhiz/quadis-server/pkg/event"
 	"github.com/nitwhiz/quadis-server/pkg/game"
+	"time"
 )
 
 type HelloAckPayload struct {
@@ -23,9 +24,13 @@ func (hmr *HelloResponseMessage) Validate() bool {
 }
 
 func (r *Room) HandshakeGreeting(c *communication.Connection) (*HelloResponseMessage, error) {
+	now := time.Now().UnixMilli()
+
 	msg, err := (&event.Event{
-		Type:   event.TypeHello,
-		Origin: event.OriginRoom(r.GetId()),
+		Type:        event.TypeHello,
+		Origin:      event.OriginRoom(r.GetId()),
+		PublishedAt: now,
+		SentAt:      now,
 	}).Serialize()
 
 	if err != nil {
@@ -56,6 +61,8 @@ func (r *Room) HandshakeGreeting(c *communication.Connection) (*HelloResponseMes
 }
 
 func (r *Room) HandshakeAck(c *communication.Connection, g *game.Game, host bool) error {
+	now := time.Now().UnixMilli()
+
 	msg, err := (&event.Event{
 		Type:   event.TypeHelloAck,
 		Origin: event.OriginRoom(r.GetId()),
@@ -64,6 +71,8 @@ func (r *Room) HandshakeAck(c *communication.Connection, g *game.Game, host bool
 			ControlledGame: g.ToPayload(),
 			Host:           host,
 		},
+		PublishedAt: now,
+		SentAt:      now,
 	}).Serialize()
 
 	if err != nil {

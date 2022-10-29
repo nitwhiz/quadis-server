@@ -10,9 +10,11 @@ type Origin struct {
 }
 
 type Event struct {
-	Type    string  `json:"type"`
-	Origin  *Origin `json:"origin"`
-	Payload any     `json:"payload"`
+	Type        string  `json:"type"`
+	Origin      *Origin `json:"origin"`
+	Payload     any     `json:"payload"`
+	PublishedAt int64   `json:"publishedAt"`
+	SentAt      int64   `json:"sentAt"`
 }
 
 type WindowPayload struct {

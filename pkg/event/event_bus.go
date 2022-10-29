@@ -49,15 +49,25 @@ func (b *Bus) windowClosedCallback(events []*Event) {
 		},
 	}
 
+	winEvent.PublishedAt = time.Now().UnixMilli()
+
+	defer b.connectionsMutex.RUnlock()
+	b.connectionsMutex.RLock()
+
+	now := time.Now().UnixMilli()
+
+	for _, e := range events {
+		e.SentAt = now
+	}
+
+	winEvent.SentAt = now
+
 	sMsg, err := winEvent.Serialize()
 
 	if err != nil {
 		log.Printf("serialization error: %s, ignoring.\n", err)
 		return
 	}
-
-	defer b.connectionsMutex.RUnlock()
-	b.connectionsMutex.RLock()
 
 	for _, conn := range b.connections {
 		conn.Write(sMsg)
@@ -108,5 +118,6 @@ func (b *Bus) Unsubscribe(subscriberId string) {
 }
 
 func (b *Bus) Publish(event *Event) {
+	event.PublishedAt = time.Now().UnixMilli()
 	b.channel <- event
 }
