@@ -5,6 +5,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/nitwhiz/quadis-server/pkg/event"
 	"github.com/nitwhiz/quadis-server/pkg/game"
+	"github.com/nitwhiz/quadis-server/pkg/rng"
 	"sync"
 	"time"
 )
@@ -22,6 +23,7 @@ type Room struct {
 	gamesStarted        bool
 	gameOverCount       int
 	createdAt           *time.Time
+	randomSeed          *rng.Basic
 }
 
 type Payload struct {
@@ -57,10 +59,11 @@ func New() *Room {
 		gamesStarted:  false,
 		createdAt:     &now,
 		gameOverCount: 0,
+		randomSeed:    rng.NewBasic(now.UnixMicro()),
 	}
 
 	// I don't like this cyclic dependency
-	r.bedrockDistribution = NewBedrockDistribution(&r, 1234)
+	r.bedrockDistribution = NewBedrockDistribution(&r, r.randomSeed.NextInt64())
 
 	r.bedrockDistribution.Start()
 
@@ -99,8 +102,10 @@ func (r *Room) Start() {
 		Origin: event.OriginRoom(r.id),
 	})
 
+	seed := r.randomSeed.NextInt64()
+
 	for _, g := range r.games {
-		g.Start()
+		g.Start(seed)
 	}
 
 	r.gamesStarted = true

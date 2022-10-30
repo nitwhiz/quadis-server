@@ -56,7 +56,6 @@ func (r *Room) CreateGame(ws *websocket.Conn) error {
 		Player:         player.New(hrm.PlayerName),
 		BedrockChannel: r.bedrockDistribution.Channel,
 		ParentContext:  r.ctx,
-		Seed:           1234,
 		OverCallback: func() {
 			defer r.mu.Unlock()
 			r.mu.Lock()

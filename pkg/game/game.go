@@ -24,7 +24,6 @@ type Settings struct {
 	Player         *player.Player
 	BedrockChannel chan *Bedrock
 	ParentContext  context.Context
-	Seed           int64
 	OverCallback   OverCallback
 }
 
@@ -71,7 +70,7 @@ func New(settings *Settings) *Game {
 		over:           true,
 		score:          s,
 		lastUpdate:     nil,
-		rpg:            rng.NewPiece(settings.Seed),
+		rpg:            nil,
 		wg:             &sync.WaitGroup{},
 		mu:             &sync.RWMutex{},
 		con:            settings.Connection,
@@ -108,7 +107,9 @@ func (g *Game) IsOver() bool {
 	return g.over
 }
 
-func (g *Game) reset() {
+func (g *Game) init(seed int64) {
+	g.rpg = rng.NewPiece(seed)
+
 	g.fallingPiece = nil
 	g.nextPiece = nil
 	g.holdingPiece = piece.NewLivingPiece(nil)
@@ -224,11 +225,11 @@ func (g *Game) Update() {
 	g.lastUpdate = &now
 }
 
-func (g *Game) Start() {
+func (g *Game) Start(seed int64) {
 	defer g.mu.Unlock()
 	g.mu.Lock()
 
-	g.reset()
+	g.init(seed)
 
 	g.over = false
 }

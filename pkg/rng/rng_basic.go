@@ -12,10 +12,14 @@ func NewBasic(seed int64) *Basic {
 	}
 }
 
-func (r *Basic) Next() float64 {
+func (r *Basic) NextFloat64() float64 {
 	return r.rand.Float64()
 }
 
+func (r *Basic) NextInt64() int64 {
+	return r.rand.Int63()
+}
+
 func (r *Basic) Probably(probability float64) bool {
-	return r.Next() < probability
+	return r.NextFloat64() < probability
 }
