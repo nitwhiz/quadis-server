@@ -6,6 +6,9 @@ import (
 	"time"
 )
 
+// windowSize in ms
+var windowSize = 10
+
 type WindowClosedCallback func([]*Event)
 
 type Window struct {
@@ -65,7 +68,7 @@ func (w *Window) waitCallback() {
 	for {
 		select {
 		case <-w.ctx.Done():
-		case <-time.After(time.Millisecond * 10):
+		case <-time.After(time.Millisecond * time.Duration(windowSize)):
 			return
 		}
 	}
