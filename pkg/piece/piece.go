@@ -12,6 +12,8 @@ type Rotation int
 
 const BodyWidth = 4
 
+const TokenNone = Token(0)
+
 const TokenI = Token(1)
 const TokenO = Token(2)
 const TokenL = Token(3)

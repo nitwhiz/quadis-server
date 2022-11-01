@@ -105,10 +105,26 @@ func (f *Field) ClearLines() int {
 	return cleared
 }
 
+func (f *Field) shouldSetDataXY(i int, d piece.Token) bool {
+	if i < 0 && i >= Width*Height {
+		return false
+	}
+
+	if d != piece.TokenNone && f.data[i] == piece.TokenBedrock {
+		return false
+	}
+
+	if f.data[i] == d {
+		return false
+	}
+
+	return true
+}
+
 func (f *Field) setDataXY(x int, y int, d piece.Token) {
 	i := y*Width + x
 
-	if f.data[i] != d {
+	if f.shouldSetDataXY(i, d) {
 		f.data[i] = d
 		f.Dirty.Toggle()
 	}
@@ -156,25 +172,25 @@ func (f *Field) IncreaseBedrock(delta int) {
 	defer f.mu.Unlock()
 	f.mu.Lock()
 
-	target := f.currentBedrock + delta
+	for y := 0; y < Height; y++ {
+		for x := 0; x < Width; x++ {
+			blockData := f.getDataXY(x, y)
 
-	for f.currentBedrock < target {
-		for y := 0; y < Height; y++ {
-			for x := 0; x < Width; x++ {
-				blockData := f.getDataXY(x, y)
-
-				if y != 0 && f.isInBounds(x, y-1) {
-					f.setDataXY(x, y-1, blockData)
-				}
+			if y != 0 && f.isInBounds(x, y-delta) {
+				f.setDataXY(x, y-delta, blockData)
 			}
 		}
+	}
 
-		f.currentBedrock++
+	target := f.currentBedrock + delta
 
+	for y := f.currentBedrock; y < target; y++ {
 		for x := 0; x < Width; x++ {
-			f.setDataXY(x, Height-f.currentBedrock, piece.TokenBedrock)
+			f.setDataXY(x, Height-y-1, piece.TokenBedrock)
 		}
 	}
+
+	f.currentBedrock = target
 }
 
 func (f *Field) decreaseBedrock(delta int) {

@@ -63,7 +63,7 @@ func (d *BedrockDistribution) startDistribution() {
 					d.room.gamesMutex.RLock()
 
 					if targetGame, ok := d.room.games[targetGameId]; ok {
-						targetGame.SendBedrock(b.Amount)
+						targetGame.AddBedrock(b.Amount)
 					}
 
 					d.room.gamesMutex.RUnlock()

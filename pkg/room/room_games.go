@@ -63,6 +63,7 @@ func (r *Room) CreateGame(ws *websocket.Conn) error {
 			r.gameOverCount += 1
 
 			if r.gameOverCount >= len(r.games)-1 {
+				go r.StopGames()
 				go r.publishScores()
 			}
 		},

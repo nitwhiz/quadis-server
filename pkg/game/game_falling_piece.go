@@ -92,10 +92,29 @@ func (g *Game) updateFallingPiece(delta int64) (int, bool) {
 		g.nextFallingPiece(false)
 	}
 
+	p, pRot, pX, pY := g.fallingPiece.GetPieceAndPosition()
+
+	forcedUp := false
+
+	for !g.field.CanPutPiece(p, pRot, pX, pY) {
+		pY--
+		forcedUp = true
+
+		if pY <= 0 {
+			pY = 0
+
+			break
+		}
+	}
+
+	if forcedUp {
+		g.fallingPiece.SetY(pY)
+		g.fallingPiece.Lock()
+	}
+
 	if g.fallingPiece.IsLocked() {
 		clearedLines, gameOver = g.clearLinesAndNextPiece()
 	} else {
-		p, pRot, pX, _ := g.fallingPiece.GetPieceAndPosition()
 		shouldMove, nextY := g.fallingPiece.GetNextPosition(delta)
 
 		if shouldMove {

@@ -286,7 +286,7 @@ func (g *Game) startCommandReader() {
 	}
 }
 
-func (g *Game) SendBedrock(amount int) {
+func (g *Game) AddBedrock(amount int) {
 	defer g.mu.RUnlock()
 	g.mu.RLock()
 
