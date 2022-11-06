@@ -35,11 +35,6 @@ type BedrockTargetsPayload struct {
 	Targets map[string]string `json:"targets"`
 }
 
-type MessagePayload struct {
-	Id         string            `json:"id"`
-	Parameters map[string]string `json:"parameters"`
-}
-
 func New() *Room {
 	ctx, cancel := context.WithCancel(context.Background())
 
