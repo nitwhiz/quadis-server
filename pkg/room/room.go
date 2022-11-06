@@ -24,6 +24,7 @@ type Room struct {
 	gameOverCount       int
 	createdAt           *time.Time
 	randomSeed          *rng.Basic
+	rules               *Rules
 }
 
 type Payload struct {
@@ -55,12 +56,17 @@ func New() *Room {
 		createdAt:     &now,
 		gameOverCount: 0,
 		randomSeed:    rng.NewBasic(now.UnixMicro()),
+		rules: &Rules{
+			BedrockEnabled: false,
+		},
 	}
 
-	// I don't like this cyclic dependency
-	r.bedrockDistribution = NewBedrockDistribution(&r, r.randomSeed.NextInt64())
+	if r.rules.BedrockEnabled {
+		// I don't like this cyclic dependency
+		r.bedrockDistribution = NewBedrockDistribution(&r, r.randomSeed.NextInt64())
 
-	r.bedrockDistribution.Start()
+		r.bedrockDistribution.Start()
+	}
 
 	return &r
 }

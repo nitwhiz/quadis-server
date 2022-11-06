@@ -26,7 +26,9 @@ func (r *Room) RemoveGame(id string) {
 
 		r.gamesMutex.Unlock()
 
-		r.bedrockDistribution.Randomize()
+		if r.bedrockDistribution != nil {
+			r.bedrockDistribution.Randomize()
+		}
 	} else {
 		r.gamesMutex.Unlock()
 	}
@@ -49,13 +51,12 @@ func (r *Room) CreateGame(ws *websocket.Conn) error {
 		return err
 	}
 
-	g := game.New(&game.Settings{
-		Id:             gameId,
-		EventBus:       r.bus,
-		Connection:     c,
-		Player:         player.New(hrm.PlayerName),
-		BedrockChannel: r.bedrockDistribution.Channel,
-		ParentContext:  r.ctx,
+	gameSettings := game.Settings{
+		Id:            gameId,
+		EventBus:      r.bus,
+		Connection:    c,
+		Player:        player.New(hrm.PlayerName),
+		ParentContext: r.ctx,
 		OverCallback: func() {
 			defer r.mu.Unlock()
 			r.mu.Lock()
@@ -67,7 +68,13 @@ func (r *Room) CreateGame(ws *websocket.Conn) error {
 				go r.publishScores()
 			}
 		},
-	})
+	}
+
+	if r.rules.BedrockEnabled {
+		gameSettings.BedrockChannel = r.bedrockDistribution.Channel
+	}
+
+	g := game.New(&gameSettings)
 
 	isHost := false
 
@@ -91,7 +98,9 @@ func (r *Room) CreateGame(ws *websocket.Conn) error {
 		Payload: g.ToPayload(),
 	})
 
-	r.bedrockDistribution.Randomize()
+	if r.bedrockDistribution != nil {
+		r.bedrockDistribution.Randomize()
+	}
 
 	if err != nil {
 		return err

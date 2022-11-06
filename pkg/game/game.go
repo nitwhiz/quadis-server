@@ -148,7 +148,7 @@ func (g *Game) doUpdate(delta int64) {
 
 		newBedrockLevel := g.field.GetCurrentBedrock()
 
-		if newBedrockLevel == 0 {
+		if newBedrockLevel == 0 && g.bedrockChannel != nil {
 			distributableBedrock := int(math.Max(float64(clearedLines-oldBedrockLevel), 0))
 
 			g.bedrockChannel <- &Bedrock{
