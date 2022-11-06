@@ -43,7 +43,7 @@ func (s *Score) Reset() {
 	s.score = 0
 	s.lines = 0
 
-	s.Dirty.Toggle()
+	s.Dirty.Trip()
 }
 
 func (s *Score) AddLines(l int) {
@@ -73,5 +73,5 @@ func (s *Score) AddLines(l int) {
 
 	s.lines += l
 
-	s.Dirty.Toggle()
+	s.Dirty.Trip()
 }

@@ -51,6 +51,8 @@ func NewBedrockDistribution(room *Room, seed int64) *BedrockDistribution {
 }
 
 func (d *BedrockDistribution) startDistribution() {
+	// todo: waitgroup
+
 	for {
 		select {
 		case <-d.ctx.Done():
@@ -80,6 +82,8 @@ func (d *BedrockDistribution) startDistribution() {
 }
 
 func (d *BedrockDistribution) startRandomizer() {
+	// todo: waitgroup
+
 	for {
 		select {
 		case <-d.ctx.Done():

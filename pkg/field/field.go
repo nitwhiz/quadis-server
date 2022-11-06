@@ -52,7 +52,7 @@ func (f *Field) Reset() {
 
 	f.data = make([]piece.Token, Width*Height)
 
-	f.Dirty.Toggle()
+	f.Dirty.Trip()
 }
 
 func (f *Field) isInBounds(x int, y int) bool {
@@ -126,7 +126,7 @@ func (f *Field) setDataXY(x int, y int, d piece.Token) {
 
 	if f.shouldSetDataXY(i, d) {
 		f.data[i] = d
-		f.Dirty.Toggle()
+		f.Dirty.Trip()
 	}
 }
 

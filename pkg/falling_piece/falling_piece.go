@@ -114,7 +114,7 @@ func (p *FallingPiece) Update(nextPiece *piece.Piece, x int, y int, r piece.Rota
 
 	p.locked = false
 
-	p.Dirty.Toggle()
+	p.Dirty.Trip()
 }
 
 func (p *FallingPiece) SetY(y int) {
@@ -123,7 +123,7 @@ func (p *FallingPiece) SetY(y int) {
 
 	p.y = y
 
-	p.Dirty.Toggle()
+	p.Dirty.Trip()
 }
 
 func (p *FallingPiece) SetPosition(r piece.Rotation, x int, y int) {
@@ -134,5 +134,5 @@ func (p *FallingPiece) SetPosition(r piece.Rotation, x int, y int) {
 	p.x = x
 	p.y = y
 
-	p.Dirty.Toggle()
+	p.Dirty.Trip()
 }

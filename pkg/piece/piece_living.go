@@ -43,7 +43,7 @@ func (l *LivingPiece) SetPiece(piece *Piece) {
 
 	if l.piece != piece {
 		l.piece = piece
-		l.Dirty.Toggle()
+		l.Dirty.Trip()
 	}
 }
 
@@ -60,6 +60,6 @@ func (l *LivingPiece) SetLocked(v bool) {
 
 	if l.locked != v {
 		l.locked = v
-		l.Dirty.Toggle()
+		l.Dirty.Trip()
 	}
 }

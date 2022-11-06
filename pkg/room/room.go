@@ -57,14 +57,14 @@ func New() *Room {
 		gameOverCount: 0,
 		randomSeed:    rng.NewBasic(now.UnixMicro()),
 		rules: &Rules{
-			BedrockEnabled: false,
+			BedrockEnabled: true,
 		},
 	}
 
 	if r.rules.BedrockEnabled {
-		// I don't like this cyclic dependency
-		r.bedrockDistribution = NewBedrockDistribution(&r, r.randomSeed.NextInt64())
+		// todo: remove cyclic dependency
 
+		r.bedrockDistribution = NewBedrockDistribution(&r, r.randomSeed.NextInt64())
 		r.bedrockDistribution.Start()
 	}
 
