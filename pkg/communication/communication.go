@@ -83,8 +83,8 @@ func (c *Connection) Stop() {
 }
 
 func (c *Connection) startPings() {
-	defer c.wg.Done()
 	c.wg.Add(1)
+	defer c.wg.Done()
 
 	for {
 		select {
@@ -101,8 +101,8 @@ func (c *Connection) startPings() {
 }
 
 func (c *Connection) ping() error {
-	defer c.writeMutex.Unlock()
 	c.writeMutex.Lock()
+	defer c.writeMutex.Unlock()
 
 	_ = c.ws.SetWriteDeadline(time.Now().Add(time.Second * 2))
 
@@ -114,8 +114,8 @@ func (c *Connection) ping() error {
 }
 
 func (c *Connection) startReader() {
-	defer c.wg.Done()
 	c.wg.Add(1)
+	defer c.wg.Done()
 
 	for {
 		select {
@@ -136,8 +136,8 @@ func (c *Connection) startReader() {
 }
 
 func (c *Connection) tryRead() (string, error) {
-	defer c.readMutex.Unlock()
 	c.readMutex.Lock()
+	defer c.readMutex.Unlock()
 
 	_ = c.ws.SetReadDeadline(time.Now().Add(time.Second * 10))
 	t, msg, err := c.ws.ReadMessage()
@@ -161,8 +161,8 @@ func (c *Connection) tryRead() (string, error) {
 }
 
 func (c *Connection) startWriter() {
-	defer c.wg.Done()
 	c.wg.Add(1)
+	defer c.wg.Done()
 
 	for {
 		select {
@@ -180,8 +180,8 @@ func (c *Connection) startWriter() {
 }
 
 func (c *Connection) tryWrite(msg string) error {
-	defer c.writeMutex.Unlock()
 	c.writeMutex.Lock()
+	defer c.writeMutex.Unlock()
 
 	_ = c.ws.SetWriteDeadline(time.Now().Add(time.Second * 5))
 	err := c.ws.WriteMessage(websocket.TextMessage, []byte(msg))

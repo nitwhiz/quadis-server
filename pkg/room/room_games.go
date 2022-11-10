@@ -58,8 +58,8 @@ func (r *Room) CreateGame(ws *websocket.Conn) error {
 		Player:        player.New(hrm.PlayerName),
 		ParentContext: r.ctx,
 		OverCallback: func() {
-			defer r.mu.Unlock()
 			r.mu.Lock()
+			defer r.mu.Unlock()
 
 			r.gameOverCount += 1
 
@@ -110,8 +110,8 @@ func (r *Room) CreateGame(ws *websocket.Conn) error {
 }
 
 func (r *Room) GetRunningGamesCount() int {
-	defer r.gamesMutex.RUnlock()
 	r.gamesMutex.RLock()
+	defer r.gamesMutex.RUnlock()
 
 	runningCount := 0
 

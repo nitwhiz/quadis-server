@@ -72,8 +72,8 @@ func New() *Room {
 }
 
 func (r *Room) ToPayload() *Payload {
-	defer r.mu.RUnlock()
 	r.mu.RLock()
+	defer r.mu.RUnlock()
 
 	var gps []*game.Payload
 
@@ -88,15 +88,15 @@ func (r *Room) ToPayload() *Payload {
 }
 
 func (r *Room) GetId() string {
-	defer r.mu.RUnlock()
 	r.mu.RLock()
+	defer r.mu.RUnlock()
 
 	return r.id
 }
 
 func (r *Room) Start() {
-	defer r.gamesMutex.RUnlock()
 	r.gamesMutex.RLock()
+	defer r.gamesMutex.RUnlock()
 
 	r.bus.Publish(&event.Event{
 		Type:   event.TypeStart,
@@ -120,8 +120,8 @@ func (r *Room) StopGames() {
 		g.ToggleOver()
 	}
 
-	defer r.mu.Unlock()
 	r.mu.Lock()
+	defer r.mu.Unlock()
 
 	r.gamesStarted = false
 }
@@ -129,8 +129,8 @@ func (r *Room) StopGames() {
 func (r *Room) Stop() {
 	r.StopGames()
 
-	defer r.mu.Unlock()
 	r.mu.Lock()
+	defer r.mu.Unlock()
 
 	r.stop()
 	r.wg.Wait()

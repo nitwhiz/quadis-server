@@ -31,8 +31,8 @@ func New() *Field {
 }
 
 func (f *Field) ToPayload() *Payload {
-	defer f.mu.RUnlock()
 	f.mu.RLock()
+	defer f.mu.RUnlock()
 
 	return &Payload{
 		Data: f.data,
@@ -40,15 +40,15 @@ func (f *Field) ToPayload() *Payload {
 }
 
 func (f *Field) GetCurrentBedrock() int {
-	defer f.mu.RUnlock()
 	f.mu.RLock()
+	defer f.mu.RUnlock()
 
 	return f.currentBedrock
 }
 
 func (f *Field) Reset() {
-	defer f.mu.Unlock()
 	f.mu.Lock()
+	defer f.mu.Unlock()
 
 	f.data = make([]piece.Token, Width*Height)
 
@@ -64,8 +64,8 @@ func (f *Field) isInBounds(x int, y int) bool {
 }
 
 func (f *Field) ClearLines() int {
-	defer f.mu.Unlock()
 	f.mu.Lock()
+	defer f.mu.Unlock()
 
 	cleared := 0
 
@@ -135,8 +135,8 @@ func (f *Field) getDataXY(x int, y int) piece.Token {
 }
 
 func (f *Field) PutPiece(p *piece.Piece, r piece.Rotation, x int, y int) {
-	defer f.mu.Unlock()
 	f.mu.Lock()
+	defer f.mu.Unlock()
 
 	for px := 0; px < piece.BodyWidth; px++ {
 		for py := 0; py < piece.BodyWidth; py++ {
@@ -150,8 +150,8 @@ func (f *Field) PutPiece(p *piece.Piece, r piece.Rotation, x int, y int) {
 }
 
 func (f *Field) CanPutPiece(p *piece.Piece, r piece.Rotation, x int, y int) bool {
-	defer f.mu.RUnlock()
 	f.mu.RLock()
+	defer f.mu.RUnlock()
 
 	for px := 0; px < piece.BodyWidth; px++ {
 		for py := 0; py < piece.BodyWidth; py++ {
@@ -169,8 +169,8 @@ func (f *Field) CanPutPiece(p *piece.Piece, r piece.Rotation, x int, y int) bool
 
 // IncreaseBedrock increases the bedrock level as far as possible, even moving pieces out over the top border
 func (f *Field) IncreaseBedrock(delta int) {
-	defer f.mu.Unlock()
 	f.mu.Lock()
+	defer f.mu.Unlock()
 
 	for y := 0; y < Height; y++ {
 		for x := 0; x < Width; x++ {
@@ -212,8 +212,8 @@ func (f *Field) decreaseBedrock(delta int) {
 }
 
 func (f *Field) GetCenterX() int {
-	defer f.mu.RUnlock()
 	f.mu.RLock()
+	defer f.mu.RUnlock()
 
 	return f.centerX
 }

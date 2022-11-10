@@ -87,22 +87,22 @@ func New(settings *Settings) *Game {
 }
 
 func (g *Game) GetScore() *score.Score {
-	defer g.mu.RUnlock()
 	g.mu.RLock()
+	defer g.mu.RUnlock()
 
 	return g.score
 }
 
 func (g *Game) GetPlayer() *player.Player {
-	defer g.mu.RUnlock()
 	g.mu.RLock()
+	defer g.mu.RUnlock()
 
 	return g.player
 }
 
 func (g *Game) IsOver() bool {
-	defer g.mu.RUnlock()
 	g.mu.RLock()
+	defer g.mu.RUnlock()
 
 	return g.over
 }
@@ -123,8 +123,8 @@ func (g *Game) init(seed int64) {
 }
 
 func (g *Game) ToPayload() *Payload {
-	defer g.mu.RUnlock()
 	g.mu.RLock()
+	defer g.mu.RUnlock()
 
 	return &Payload{
 		Id:         g.id,
@@ -133,8 +133,8 @@ func (g *Game) ToPayload() *Payload {
 }
 
 func (g *Game) GetId() string {
-	defer g.mu.RUnlock()
 	g.mu.RLock()
+	defer g.mu.RUnlock()
 
 	return g.id
 }
@@ -213,8 +213,8 @@ func (g *Game) Update() {
 		return
 	}
 
-	defer g.mu.Unlock()
 	g.mu.Lock()
+	defer g.mu.Unlock()
 
 	now := time.Now().UnixMilli()
 
@@ -226,8 +226,8 @@ func (g *Game) Update() {
 }
 
 func (g *Game) Start(seed int64) {
-	defer g.mu.Unlock()
 	g.mu.Lock()
+	defer g.mu.Unlock()
 
 	g.init(seed)
 
@@ -255,8 +255,8 @@ func (g *Game) Stop() {
 }
 
 func (g *Game) startUpdater() {
-	defer g.wg.Done()
 	g.wg.Add(1)
+	defer g.wg.Done()
 
 	for {
 		select {
@@ -270,8 +270,8 @@ func (g *Game) startUpdater() {
 }
 
 func (g *Game) startCommandReader() {
-	defer g.wg.Done()
 	g.wg.Add(1)
+	defer g.wg.Done()
 
 	for {
 		select {
@@ -287,8 +287,8 @@ func (g *Game) startCommandReader() {
 }
 
 func (g *Game) AddBedrock(amount int) {
-	defer g.mu.RUnlock()
 	g.mu.RLock()
+	defer g.mu.RUnlock()
 
 	g.field.IncreaseBedrock(amount)
 }

@@ -15,8 +15,8 @@ func New(name string) *Player {
 }
 
 func (p *Player) GetName() string {
-	defer p.mu.RUnlock()
 	p.mu.RLock()
+	defer p.mu.RUnlock()
 
 	return p.name
 }

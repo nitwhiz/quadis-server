@@ -30,8 +30,8 @@ func NewWindow(parentContext context.Context, cb WindowClosedCallback) *Window {
 }
 
 func (w *Window) Add(e *Event) {
-	defer w.mu.Unlock()
 	w.mu.Lock()
+	defer w.mu.Unlock()
 
 	w.events = append(w.events, e)
 
@@ -43,8 +43,8 @@ func (w *Window) Add(e *Event) {
 }
 
 func (w *Window) runCallback() {
-	defer w.mu.Unlock()
 	w.mu.Lock()
+	defer w.mu.Unlock()
 
 	var events []*Event
 

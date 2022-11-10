@@ -51,8 +51,8 @@ func (b *Bus) windowClosedCallback(events []*Event) {
 
 	winEvent.PublishedAt = time.Now().UnixMilli()
 
-	defer b.connectionsMutex.RUnlock()
 	b.connectionsMutex.RLock()
+	defer b.connectionsMutex.RUnlock()
 
 	now := time.Now().UnixMilli()
 
@@ -75,8 +75,8 @@ func (b *Bus) windowClosedCallback(events []*Event) {
 }
 
 func (b *Bus) startListener() {
-	defer b.wg.Done()
 	b.wg.Add(1)
+	defer b.wg.Done()
 
 	for {
 		select {
@@ -102,15 +102,15 @@ func (b *Bus) Stop() {
 }
 
 func (b *Bus) Subscribe(subscriberId string, conn *communication.Connection) {
-	defer b.connectionsMutex.Unlock()
 	b.connectionsMutex.Lock()
+	defer b.connectionsMutex.Unlock()
 
 	b.connections[subscriberId] = conn
 }
 
 func (b *Bus) Unsubscribe(subscriberId string) {
-	defer b.connectionsMutex.Unlock()
 	b.connectionsMutex.Lock()
+	defer b.connectionsMutex.Unlock()
 
 	if _, ok := b.connections[subscriberId]; ok {
 		delete(b.connections, subscriberId)

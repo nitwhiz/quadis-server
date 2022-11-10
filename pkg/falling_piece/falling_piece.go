@@ -40,8 +40,8 @@ func New(piece *piece.Piece) *FallingPiece {
 }
 
 func (p *FallingPiece) ToPayload() *Payload {
-	defer p.mu.RUnlock()
 	p.mu.RLock()
+	defer p.mu.RUnlock()
 
 	return &Payload{
 		Piece: piece.Payload{
@@ -54,30 +54,30 @@ func (p *FallingPiece) ToPayload() *Payload {
 }
 
 func (p *FallingPiece) Lock() {
-	defer p.mu.Unlock()
 	p.mu.Lock()
+	defer p.mu.Unlock()
 
 	p.fallTimer = 0
 	p.locked = true
 }
 
 func (p *FallingPiece) IsLocked() bool {
-	defer p.mu.RUnlock()
 	p.mu.RLock()
+	defer p.mu.RUnlock()
 
 	return p.locked
 }
 
 func (p *FallingPiece) GetPieceAndPosition() (*piece.Piece, piece.Rotation, int, int) {
-	defer p.mu.RUnlock()
 	p.mu.RLock()
+	defer p.mu.RUnlock()
 
 	return p.piece, p.rotation, p.x, p.y
 }
 
 func (p *FallingPiece) GetNextPosition(delta int64) (bool, int) {
-	defer p.mu.RUnlock()
 	p.mu.RLock()
+	defer p.mu.RUnlock()
 
 	if p.piece != nil && !p.locked {
 		p.fallTimer -= delta
@@ -93,15 +93,15 @@ func (p *FallingPiece) GetNextPosition(delta int64) (bool, int) {
 }
 
 func (p *FallingPiece) GetPiece() *piece.Piece {
-	defer p.mu.RUnlock()
 	p.mu.RLock()
+	defer p.mu.RUnlock()
 
 	return p.piece
 }
 
 func (p *FallingPiece) Update(nextPiece *piece.Piece, x int, y int, r piece.Rotation) {
-	defer p.mu.Unlock()
 	p.mu.Lock()
+	defer p.mu.Unlock()
 
 	p.piece = nextPiece
 
@@ -118,8 +118,8 @@ func (p *FallingPiece) Update(nextPiece *piece.Piece, x int, y int, r piece.Rota
 }
 
 func (p *FallingPiece) SetY(y int) {
-	defer p.mu.Unlock()
 	p.mu.Lock()
+	defer p.mu.Unlock()
 
 	p.y = y
 
@@ -127,8 +127,8 @@ func (p *FallingPiece) SetY(y int) {
 }
 
 func (p *FallingPiece) SetPosition(r piece.Rotation, x int, y int) {
-	defer p.mu.Unlock()
 	p.mu.Lock()
+	defer p.mu.Unlock()
 
 	p.rotation = r
 	p.x = x

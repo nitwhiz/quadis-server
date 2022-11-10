@@ -27,8 +27,8 @@ func New() *Score {
 }
 
 func (s *Score) ToPayload() *Payload {
-	defer s.mu.RUnlock()
 	s.mu.RLock()
+	defer s.mu.RUnlock()
 
 	return &Payload{
 		Score: s.score,
@@ -37,8 +37,8 @@ func (s *Score) ToPayload() *Payload {
 }
 
 func (s *Score) Reset() {
-	defer s.mu.Unlock()
 	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	s.score = 0
 	s.lines = 0
@@ -47,8 +47,8 @@ func (s *Score) Reset() {
 }
 
 func (s *Score) AddLines(l int) {
-	defer s.mu.Unlock()
 	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	if l == 0 {
 		return

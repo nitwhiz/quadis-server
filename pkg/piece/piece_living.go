@@ -22,8 +22,8 @@ func NewLivingPiece(piece *Piece) *LivingPiece {
 }
 
 func (l *LivingPiece) ToPayload() *Payload {
-	defer l.mu.RUnlock()
 	l.mu.RLock()
+	defer l.mu.RUnlock()
 
 	return &Payload{
 		Token: l.piece.Token,
@@ -31,15 +31,15 @@ func (l *LivingPiece) ToPayload() *Payload {
 }
 
 func (l *LivingPiece) GetPiece() *Piece {
-	defer l.mu.RUnlock()
 	l.mu.RLock()
+	defer l.mu.RUnlock()
 
 	return l.piece
 }
 
 func (l *LivingPiece) SetPiece(piece *Piece) {
-	defer l.mu.Unlock()
 	l.mu.Lock()
+	defer l.mu.Unlock()
 
 	if l.piece != piece {
 		l.piece = piece
@@ -48,15 +48,15 @@ func (l *LivingPiece) SetPiece(piece *Piece) {
 }
 
 func (l *LivingPiece) IsLocked() bool {
-	defer l.mu.RUnlock()
 	l.mu.RLock()
+	defer l.mu.RUnlock()
 
 	return l.locked
 }
 
 func (l *LivingPiece) SetLocked(v bool) {
-	defer l.mu.Unlock()
 	l.mu.Lock()
+	defer l.mu.Unlock()
 
 	if l.locked != v {
 		l.locked = v

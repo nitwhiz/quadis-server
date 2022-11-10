@@ -12,8 +12,8 @@ type playerScorePayload struct {
 }
 
 func (r *Room) publishScores() {
-	defer r.gamesMutex.RUnlock()
 	r.gamesMutex.RLock()
+	defer r.gamesMutex.RUnlock()
 
 	var scores []*playerScorePayload
 

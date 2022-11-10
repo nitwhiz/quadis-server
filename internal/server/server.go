@@ -41,8 +41,8 @@ func (s *Server) createRoom() *room.Room {
 }
 
 func (s *Server) getRoom(id string) *room.Room {
-	defer s.roomsMutex.Unlock()
 	s.roomsMutex.Lock()
+	defer s.roomsMutex.Unlock()
 
 	if r, ok := s.rooms[id]; ok {
 		return r
