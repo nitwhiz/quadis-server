@@ -16,13 +16,11 @@ type Bus struct {
 	wg               *sync.WaitGroup
 	channel          chan *Event
 	ctx              context.Context
-	stop             context.CancelFunc
 	window           *Window
 }
 
 // NewBus returns an event bus made for broadcasting events to websocket connections
-func NewBus(parentContext context.Context) *Bus {
-	ctx, cancel := context.WithCancel(parentContext)
+func NewBus(ctx context.Context) *Bus {
 
 	b := Bus{
 		connections:      map[string]*communication.Connection{},
@@ -30,7 +28,6 @@ func NewBus(parentContext context.Context) *Bus {
 		wg:               &sync.WaitGroup{},
 		channel:          make(chan *Event, 256),
 		ctx:              ctx,
-		stop:             cancel,
 	}
 
 	b.window = NewWindow(ctx, b.windowClosedCallback)
@@ -94,11 +91,6 @@ func (b *Bus) startListener() {
 
 func (b *Bus) handleEvent(event *Event) {
 	b.window.Add(event)
-}
-
-func (b *Bus) Stop() {
-	b.stop()
-	b.wg.Wait()
 }
 
 func (b *Bus) Subscribe(subscriberId string, conn *communication.Connection) {
