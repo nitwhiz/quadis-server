@@ -8,7 +8,6 @@ import (
 	"github.com/nitwhiz/quadis-server/pkg/room"
 	"net/http"
 	"sync"
-	"time"
 )
 
 var upgrader = websocket.Upgrader{
@@ -40,6 +39,17 @@ func (s *Server) createRoom() *room.Room {
 	return r
 }
 
+func (s *Server) removeRoom(r *room.Room) {
+	s.roomsMutex.Lock()
+	defer s.roomsMutex.Unlock()
+
+	rId := r.GetId()
+
+	if _, ok := s.rooms[rId]; ok {
+		delete(s.rooms, rId)
+	}
+}
+
 func (s *Server) getRoom(id string) *room.Room {
 	s.roomsMutex.Lock()
 	defer s.roomsMutex.Unlock()
@@ -54,23 +64,23 @@ func (s *Server) getRoom(id string) *room.Room {
 func (s *Server) connect(roomId string, resp http.ResponseWriter, req *http.Request) error {
 	r := s.getRoom(roomId)
 
-	conn, err := upgrader.Upgrade(resp, req, nil)
+	if r != nil {
+		conn, err := upgrader.Upgrade(resp, req, nil)
 
-	if r == nil {
-		if err = conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "room_not_found"), time.Now().Add(time.Second)); err != nil {
+		if err != nil {
 			return err
 		}
 
-		if err = conn.Close(); err != nil {
-			return err
-		}
-
-		return errors.New("room_not_found")
+		return r.CreateGame(conn)
 	}
 
-	// todo: send room_has_running_games if room's games are already running
+	return errors.New("room_not_found")
 
-	return r.CreateGame(conn)
+}
+
+func (s *Server) WaitForRoomShutdown(r *room.Room) {
+	<-r.ShutdownDone()
+	s.removeRoom(r)
 }
 
 func (s *Server) Start() error {
@@ -136,7 +146,12 @@ func (s *Server) Start() error {
 		roomId := c.Param("roomId")
 
 		if err := s.connect(roomId, c.Writer, c.Request); err != nil {
-			c.Abort()
+			c.AbortWithStatus(http.StatusBadRequest)
+			return
+		}
+
+		if r := s.getRoom(roomId); r != nil {
+			go s.WaitForRoomShutdown(r)
 		}
 	})
 

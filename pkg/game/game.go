@@ -17,35 +17,40 @@ import (
 
 type OverCallback func()
 
+type ActivateItemCallback func(g *Game)
+
 type Settings struct {
-	Id             string
-	EventBus       *event.Bus
-	Connection     *communication.Connection
-	Player         *player.Player
-	BedrockChannel chan *Bedrock
-	ParentContext  context.Context
-	OverCallback   OverCallback
+	Id                   string
+	EventBus             *event.Bus
+	Connection           *communication.Connection
+	Player               *player.Player
+	BedrockChannel       chan *Bedrock
+	ParentContext        context.Context
+	OverCallback         OverCallback
+	ActivateItemCallback ActivateItemCallback
 }
 
 type Game struct {
-	id             string
-	player         *player.Player
-	fallingPiece   *falling_piece.FallingPiece
-	nextPiece      *piece.LivingPiece
-	holdingPiece   *piece.LivingPiece
-	field          *field.Field
-	bus            *event.Bus
-	over           bool
-	score          *score.Score
-	lastUpdate     *int64
-	rpg            *rng.Piece
-	ctx            context.Context
-	stop           context.CancelFunc
-	wg             *sync.WaitGroup
-	mu             *sync.RWMutex
-	con            *communication.Connection
-	bedrockChannel chan *Bedrock
-	overCallback   OverCallback
+	id                   string
+	player               *player.Player
+	fallingPiece         *falling_piece.FallingPiece
+	nextPiece            *piece.LivingPiece
+	holdingPiece         *piece.LivingPiece
+	field                *field.Field
+	bus                  *event.Bus
+	over                 bool
+	score                *score.Score
+	lastUpdate           *int64
+	rpg                  *rng.Piece
+	ctx                  context.Context
+	stop                 context.CancelFunc
+	wg                   *sync.WaitGroup
+	mu                   *sync.RWMutex
+	con                  *communication.Connection
+	bedrockChannel       chan *Bedrock
+	overCallback         OverCallback
+	activateItemCallback ActivateItemCallback
+	lastActivity         time.Time
 }
 
 type Payload struct {
@@ -60,30 +65,43 @@ func New(settings *Settings) *Game {
 	ctx, cancel := context.WithCancel(settings.ParentContext)
 
 	g := Game{
-		id:             settings.Id,
-		player:         settings.Player,
-		fallingPiece:   nil,
-		nextPiece:      nil,
-		holdingPiece:   nil,
-		field:          f,
-		bus:            settings.EventBus,
-		over:           true,
-		score:          s,
-		lastUpdate:     nil,
-		rpg:            nil,
-		wg:             &sync.WaitGroup{},
-		mu:             &sync.RWMutex{},
-		con:            settings.Connection,
-		bedrockChannel: settings.BedrockChannel,
-		ctx:            ctx,
-		stop:           cancel,
-		overCallback:   settings.OverCallback,
+		id:                   settings.Id,
+		player:               settings.Player,
+		fallingPiece:         nil,
+		nextPiece:            nil,
+		holdingPiece:         nil,
+		field:                f,
+		bus:                  settings.EventBus,
+		over:                 true,
+		score:                s,
+		lastUpdate:           nil,
+		rpg:                  nil,
+		wg:                   &sync.WaitGroup{},
+		mu:                   &sync.RWMutex{},
+		con:                  settings.Connection,
+		bedrockChannel:       settings.BedrockChannel,
+		ctx:                  ctx,
+		stop:                 cancel,
+		overCallback:         settings.OverCallback,
+		activateItemCallback: settings.ActivateItemCallback,
+		lastActivity:         time.Now(),
 	}
 
 	go g.startCommandReader()
 	go g.startUpdater()
 
 	return &g
+}
+
+func (g *Game) activateItem() {
+	g.activateItemCallback(g)
+}
+
+func (g *Game) GetField() *field.Field {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	return g.field
 }
 
 func (g *Game) GetScore() *score.Score {
@@ -120,6 +138,8 @@ func (g *Game) init(seed int64) {
 	g.score.Reset()
 
 	g.rpg.NextBag()
+
+	g.lastActivity = time.Now()
 }
 
 func (g *Game) ToPayload() *Payload {
@@ -204,7 +224,7 @@ func (g *Game) doUpdate(delta int64) {
 			Origin: event.OriginGame(g.id),
 		})
 
-		go g.ToggleOver()
+		go g.ToggleOver(false)
 	}
 }
 
@@ -234,12 +254,19 @@ func (g *Game) Start(seed int64) {
 	g.over = false
 }
 
-// ToggleOver sets over to true
-func (g *Game) ToggleOver() {
-	defer g.mu.Unlock()
-	g.mu.Lock()
+func (g *Game) GetLastActivity() time.Time {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
 
-	if g.over != true {
+	return g.lastActivity
+}
+
+// ToggleOver sets over to true
+func (g *Game) ToggleOver(shutdown bool) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	if g.over != true && !shutdown {
 		go g.overCallback()
 	}
 

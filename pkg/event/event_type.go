@@ -6,7 +6,7 @@ const TypeHelloAck = "hello_ack"
 const TypeStart = "room_start"
 const TypeJoin = "room_join"
 const TypeLeave = "room_leave"
-const TypeBedrockTargetsUpdate = "room_bedrock_targets_update"
+const TypeTargetsUpdate = "room_targets_update"
 
 const TypeFieldUpdate = "field_update"
 const TypeFallingPieceUpdate = "falling_piece_update"

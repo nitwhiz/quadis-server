@@ -1,5 +1,7 @@
 package game
 
+import "time"
+
 type Command string
 
 const CommandLeft = Command("L")
@@ -8,11 +10,14 @@ const CommandDown = Command("D")
 const CommandRotate = Command("X")
 const CommandHardLock = Command("P")
 const CommandHold = Command("H")
+const CommandItem = Command("I")
 
 func (g *Game) HandleCommand(cmd Command) {
 	if g.IsOver() {
 		return
 	}
+
+	g.lastActivity = time.Now()
 
 	switch cmd {
 	case CommandLeft:
@@ -32,6 +37,9 @@ func (g *Game) HandleCommand(cmd Command) {
 		break
 	case CommandHold:
 		g.tryHoldFallingPiece()
+		break
+	case CommandItem:
+		g.activateItem()
 		break
 	default:
 		break

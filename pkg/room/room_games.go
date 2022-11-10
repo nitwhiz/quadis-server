@@ -15,7 +15,7 @@ func (r *Room) RemoveGame(id string) {
 	if g, ok := r.games[id]; ok {
 		r.bus.Unsubscribe(id)
 
-		g.ToggleOver()
+		g.ToggleOver(true)
 		delete(r.games, id)
 
 		r.bus.Publish(&event.Event{
@@ -26,8 +26,8 @@ func (r *Room) RemoveGame(id string) {
 
 		r.gamesMutex.Unlock()
 
-		if r.bedrockDistribution != nil {
-			r.bedrockDistribution.Randomize()
+		if r.targets != nil {
+			r.targets.Randomize()
 		}
 	} else {
 		r.gamesMutex.Unlock()
@@ -64,9 +64,12 @@ func (r *Room) CreateGame(ws *websocket.Conn) error {
 			r.gameOverCount += 1
 
 			if r.gameOverCount >= len(r.games)-1 {
-				go r.StopGames()
+				go r.StopGames(false)
 				go r.publishScores()
 			}
+		},
+		ActivateItemCallback: func(g *game.Game) {
+			r.itemDistribution.ActivateItem(g)
 		},
 	}
 
@@ -98,8 +101,8 @@ func (r *Room) CreateGame(ws *websocket.Conn) error {
 		Payload: g.ToPayload(),
 	})
 
-	if r.bedrockDistribution != nil {
-		r.bedrockDistribution.Randomize()
+	if r.targets != nil {
+		r.targets.Randomize()
 	}
 
 	if err != nil {

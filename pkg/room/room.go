@@ -18,13 +18,15 @@ type Room struct {
 	wg                  *sync.WaitGroup
 	mu                  *sync.RWMutex
 	ctx                 context.Context
-	stop                context.CancelFunc
-	bedrockDistribution *BedrockDistribution
+	shutdown            context.CancelFunc
 	gamesStarted        bool
 	gameOverCount       int
-	createdAt           *time.Time
+	createdAt           time.Time
 	randomSeed          *rng.Basic
 	rules               *Rules
+	targets             *TargetsDistribution
+	bedrockDistribution *BedrockDistribution
+	itemDistribution    *ItemDistribution
 }
 
 type Payload struct {
@@ -32,40 +34,42 @@ type Payload struct {
 	Games []*game.Payload `json:"games"`
 }
 
-type BedrockTargetsPayload struct {
-	Targets map[string]string `json:"targets"`
-}
-
 func New() *Room {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, shutdown := context.WithCancel(context.Background())
 
 	b := event.NewBus(ctx)
 
 	now := time.Now()
 
 	r := Room{
-		id:            uuid.NewString(),
-		games:         map[string]*game.Game{},
-		gamesMutex:    &sync.RWMutex{},
-		bus:           b,
-		wg:            &sync.WaitGroup{},
-		mu:            &sync.RWMutex{},
-		ctx:           ctx,
-		stop:          cancel,
-		gamesStarted:  false,
-		createdAt:     &now,
-		gameOverCount: 0,
-		randomSeed:    rng.NewBasic(now.UnixMicro()),
+		id:               uuid.NewString(),
+		games:            map[string]*game.Game{},
+		gamesMutex:       &sync.RWMutex{},
+		itemDistribution: nil,
+		bus:              b,
+		wg:               &sync.WaitGroup{},
+		mu:               &sync.RWMutex{},
+		ctx:              ctx,
+		shutdown:         shutdown,
+		gamesStarted:     false,
+		createdAt:        time.Now(),
+		gameOverCount:    0,
+		randomSeed:       rng.NewBasic(now.UnixMicro()),
 		rules: &Rules{
 			BedrockEnabled: true,
+			ItemsEnabled:   true,
 		},
 	}
 
-	if r.rules.BedrockEnabled {
-		// todo: remove cyclic dependency
+	r.StartCurfewBouncer()
+	r.StartTargetDistribution()
 
-		r.bedrockDistribution = NewBedrockDistribution(&r, r.randomSeed.NextInt64())
-		r.bedrockDistribution.Start()
+	if r.rules.BedrockEnabled {
+		r.StartBedrockDistribution()
+	}
+
+	if r.rules.ItemsEnabled {
+		r.StartItemDistribution()
 	}
 
 	return &r
@@ -85,6 +89,62 @@ func (r *Room) ToPayload() *Payload {
 		Id:    r.id,
 		Games: gps,
 	}
+}
+
+func (r *Room) GetWaitGroup() *sync.WaitGroup {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	return r.wg
+}
+
+func (r *Room) GetEventBus() *event.Bus {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	return r.bus
+}
+
+func (r *Room) ShutdownDone() <-chan struct{} {
+	return r.ctx.Done()
+}
+
+func (r *Room) GetGames() map[string]*game.Game {
+	r.gamesMutex.RLock()
+	defer r.gamesMutex.RUnlock()
+
+	res := map[string]*game.Game{}
+
+	for gId, g := range r.games {
+		res[gId] = g
+	}
+
+	return res
+}
+
+func (r *Room) GetLastActivity() time.Time {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	r.gamesMutex.RLock()
+	defer r.gamesMutex.RUnlock()
+
+	if len(r.games) == 0 {
+		zeroTime, _ := time.Parse(time.RFC822, "06 Dec 95 22:00 CET")
+		return zeroTime
+	}
+
+	var latestActivity time.Time
+
+	for _, g := range r.games {
+		lastGameActivity := g.GetLastActivity()
+
+		if latestActivity.Before(lastGameActivity) {
+			latestActivity = lastGameActivity
+		}
+	}
+
+	return latestActivity
 }
 
 func (r *Room) GetId() string {
@@ -112,12 +172,12 @@ func (r *Room) Start() {
 	r.gamesStarted = true
 }
 
-func (r *Room) StopGames() {
-	defer r.gamesMutex.RUnlock()
+func (r *Room) StopGames(shutdown bool) {
 	r.gamesMutex.RLock()
+	defer r.gamesMutex.RUnlock()
 
 	for _, g := range r.games {
-		g.ToggleOver()
+		g.ToggleOver(shutdown)
 	}
 
 	r.mu.Lock()
@@ -126,12 +186,12 @@ func (r *Room) StopGames() {
 	r.gamesStarted = false
 }
 
-func (r *Room) Stop() {
-	r.StopGames()
+func (r *Room) Shutdown() {
+	r.StopGames(true)
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	r.stop()
+	r.shutdown()
 	r.wg.Wait()
 }
