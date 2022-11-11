@@ -8,6 +8,7 @@ const TypeJoin = "room_join"
 const TypeLeave = "room_leave"
 const TypeTargetsUpdate = "room_targets_update"
 
+const TypeItemUpdate = "item_update"
 const TypeFieldUpdate = "field_update"
 const TypeFallingPieceUpdate = "falling_piece_update"
 const TypeHoldingPieceUpdate = "holding_piece_update"

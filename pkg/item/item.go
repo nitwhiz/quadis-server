@@ -4,7 +4,7 @@ import (
 	"log"
 )
 
-const TypeTornado = "item_tornado"
+const TypeTornado = "tornado"
 
 // todo: the necessity of these interfaces must mean that this architecture could be better (?)
 
@@ -17,13 +17,13 @@ type Room interface {
 type ActivateFunc func(sourceGame Game, room Room)
 
 type Item struct {
-	Name     string
+	Type     string
 	Activate ActivateFunc
 }
 
 func NewTornado() *Item {
 	return &Item{
-		Name: TypeTornado,
+		Type: TypeTornado,
 		Activate: func(sourceGame Game, room Room) {
 			if room == nil {
 				return

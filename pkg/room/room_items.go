@@ -1,12 +1,17 @@
 package room
 
 import (
+	"github.com/nitwhiz/quadis-server/pkg/event"
 	"github.com/nitwhiz/quadis-server/pkg/game"
 	"github.com/nitwhiz/quadis-server/pkg/item"
 	"log"
 	"sync"
 	"time"
 )
+
+type ItemPayload struct {
+	Type *string `json:"type"`
+}
 
 type ItemDistribution struct {
 	room      *Room
@@ -41,6 +46,14 @@ func (i *ItemDistribution) ActivateItem(sourceGame *game.Game) {
 	if gameItem, ok := i.gameItems[gameId]; ok {
 		gameItem.Activate(sourceGame, i.room)
 		delete(i.gameItems, gameId)
+
+		i.room.bus.Publish(&event.Event{
+			Type:   event.TypeItemUpdate,
+			Origin: event.OriginGame(gameId),
+			Payload: &ItemPayload{
+				Type: nil,
+			},
+		})
 	}
 }
 
@@ -52,7 +65,19 @@ func (i *ItemDistribution) randomize() {
 	defer i.room.gamesMutex.RUnlock()
 
 	for gId := range i.room.games {
-		i.gameItems[gId] = item.NewTornado()
+		if _, ok := i.gameItems[gId]; !ok {
+			newItem := item.NewTornado()
+
+			i.gameItems[gId] = newItem
+
+			i.room.bus.Publish(&event.Event{
+				Type:   event.TypeItemUpdate,
+				Origin: event.OriginGame(gId),
+				Payload: &ItemPayload{
+					Type: &newItem.Type,
+				},
+			})
+		}
 	}
 }
 
