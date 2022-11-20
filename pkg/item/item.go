@@ -2,10 +2,11 @@ package item
 
 import (
 	"github.com/nitwhiz/quadis-server/pkg/game"
-	"log"
 )
 
 const TypeTornado = "tornado"
+const TypeOnlyIPieces = "only_i_pieces"
+const TypeLockRotation = "lock_rotation"
 
 // todo: the necessity of this interface must mean that the architecture could be better (?)
 
@@ -22,29 +23,8 @@ type Item struct {
 	Activate ActivateFunc
 }
 
-func NewTornado() *Item {
-	return &Item{
-		Type: TypeTornado,
-		Activate: func(sourceGame *game.Game, room Room) {
-			if room == nil {
-				return
-			}
-
-			targetId := room.GetTargetGameId(sourceGame.GetId())
-
-			if targetId == "" {
-				return
-			}
-
-			targetGame := room.GetGame(targetId)
-
-			if targetGame == nil || targetGame.IsOver() {
-				return
-			}
-
-			targetGame.GetField().ShuffleTokens()
-
-			log.Println("tornado applied!")
-		},
-	}
+var All = []*Item{
+	//NewTornado(),
+	//NewOnlyIPieces(),
+	NewLockRotation(),
 }

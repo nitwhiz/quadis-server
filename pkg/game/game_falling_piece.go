@@ -38,16 +38,20 @@ func (g *Game) hardLockFallingPiece() {
 
 func (g *Game) nextFallingPiece(lastPieceWasHeld bool) {
 	if g.nextPiece == nil {
-		g.nextPiece = piece.NewLivingPiece(g.rpg.NextElement())
+		g.nextPiece = piece.NewLivingPiece(g.pieceGenerator.NextElement())
 	}
 
 	if g.fallingPiece == nil {
 		g.fallingPiece = falling_piece.New(nil)
 	}
 
-	g.fallingPiece.Update(g.nextPiece.GetPiece(), g.field.GetCenterX(), 0, 0)
+	g.fallingPiece.SetPiece(g.nextPiece.GetPiece(), g.field.GetCenterX(), 0, 0)
 
-	g.nextPiece.SetPiece(g.rpg.NextElement())
+	if g.overridePiece == nil {
+		g.nextPiece.SetPiece(g.pieceGenerator.NextElement())
+	} else {
+		g.nextPiece.SetPiece(g.overridePiece)
+	}
 
 	if !lastPieceWasHeld {
 		g.holdingPiece.SetLocked(false)
@@ -60,6 +64,10 @@ func (g *Game) tryTranslateFallingPiece(dr piece.Rotation, dx int, dy int) {
 	}
 
 	p, pr, px, py := g.fallingPiece.GetPieceAndPosition()
+
+	if dr != 0 && g.fallingPiece.IsRotationLocked() {
+		dr = 0
+	}
 
 	tr := p.ClampRotation(pr + dr)
 
@@ -140,7 +148,7 @@ func (g *Game) tryHoldFallingPiece() {
 	if currentHoldingPiece == nil {
 		g.nextFallingPiece(true)
 	} else {
-		g.fallingPiece.Update(currentHoldingPiece, g.field.GetCenterX(), 0, 0)
+		g.fallingPiece.SetPiece(currentHoldingPiece, g.field.GetCenterX(), 0, 0)
 	}
 
 	g.holdingPiece.SetLocked(true)

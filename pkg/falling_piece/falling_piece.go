@@ -7,22 +7,24 @@ import (
 )
 
 type FallingPiece struct {
-	piece     *piece.Piece
-	x         int
-	y         int
-	rotation  piece.Rotation
-	speed     int64
-	fallTimer int64
-	locked    bool
-	Dirty     *dirty.Dirtiness
-	mu        *sync.RWMutex
+	piece          *piece.Piece
+	x              int
+	y              int
+	rotation       piece.Rotation
+	speed          int64
+	fallTimer      int64
+	locked         bool
+	rotationLocked bool
+	Dirty          *dirty.Dirtiness
+	mu             *sync.RWMutex
 }
 
 type Payload struct {
-	Piece    piece.Payload  `json:"piece"`
-	Rotation piece.Rotation `json:"rotation"`
-	X        int            `json:"x"`
-	Y        int            `json:"y"`
+	Piece          piece.Payload  `json:"piece"`
+	RotationLocked bool           `json:"rotationLocked"`
+	Rotation       piece.Rotation `json:"rotation"`
+	X              int            `json:"x"`
+	Y              int            `json:"y"`
 }
 
 func New(piece *piece.Piece) *FallingPiece {
@@ -47,9 +49,10 @@ func (p *FallingPiece) ToPayload() *Payload {
 		Piece: piece.Payload{
 			Token: p.piece.Token,
 		},
-		Rotation: p.rotation,
-		X:        p.x,
-		Y:        p.y,
+		RotationLocked: p.rotationLocked,
+		Rotation:       p.rotation,
+		X:              p.x,
+		Y:              p.y,
 	}
 }
 
@@ -66,6 +69,21 @@ func (p *FallingPiece) IsLocked() bool {
 	defer p.mu.RUnlock()
 
 	return p.locked
+}
+
+func (p *FallingPiece) SetRotationLocked(locked bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	p.rotationLocked = locked
+	p.Dirty.Trip()
+}
+
+func (p *FallingPiece) IsRotationLocked() bool {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	return p.rotationLocked
 }
 
 func (p *FallingPiece) GetPieceAndPosition() (*piece.Piece, piece.Rotation, int, int) {
@@ -99,11 +117,11 @@ func (p *FallingPiece) GetPiece() *piece.Piece {
 	return p.piece
 }
 
-func (p *FallingPiece) Update(nextPiece *piece.Piece, x int, y int, r piece.Rotation) {
+func (p *FallingPiece) SetPiece(piece *piece.Piece, x int, y int, r piece.Rotation) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	p.piece = nextPiece
+	p.piece = piece
 
 	p.x = x
 	p.y = y

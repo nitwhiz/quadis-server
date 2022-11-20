@@ -69,7 +69,7 @@ func New() *Room {
 	}
 
 	if r.rules.ItemsEnabled {
-		r.StartItemDistribution()
+		r.StartItemDistribution(r.randomSeed.NextInt64())
 	}
 
 	return &r

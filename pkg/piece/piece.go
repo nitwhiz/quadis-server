@@ -35,11 +35,6 @@ type Payload struct {
 	Token Token `json:"token"`
 }
 
-func New(p *Piece) *Piece {
-	res := *p
-	return &res
-}
-
 func (d Tokens) MarshalJSON() ([]byte, error) {
 	var result string
 

@@ -8,7 +8,6 @@ import (
 	"github.com/nitwhiz/quadis-server/pkg/field"
 	"github.com/nitwhiz/quadis-server/pkg/piece"
 	"github.com/nitwhiz/quadis-server/pkg/player"
-	"github.com/nitwhiz/quadis-server/pkg/rng"
 	"github.com/nitwhiz/quadis-server/pkg/score"
 	"math"
 	"sync"
@@ -43,7 +42,7 @@ type Game struct {
 	over                 bool
 	score                *score.Score
 	lastUpdate           *int64
-	rpg                  *rng.Piece
+	pieceGenerator       *piece.Generator
 	ctx                  context.Context
 	stop                 context.CancelFunc
 	wg                   *sync.WaitGroup
@@ -54,6 +53,7 @@ type Game struct {
 	activateItemCallback ActivateItemCallback
 	lastActivity         time.Time
 	host                 bool
+	overridePiece        *piece.Piece
 }
 
 type Payload struct {
@@ -82,7 +82,7 @@ func New(settings *Settings) *Game {
 		over:                 true,
 		score:                s,
 		lastUpdate:           nil,
-		rpg:                  nil,
+		pieceGenerator:       nil,
 		wg:                   &sync.WaitGroup{},
 		mu:                   &sync.RWMutex{},
 		con:                  settings.Connection,
@@ -140,8 +140,29 @@ func (g *Game) IsOver() bool {
 	return g.over
 }
 
+func (g *Game) GetFallingPiece() *falling_piece.FallingPiece {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	return g.fallingPiece
+}
+
+func (g *Game) SetOverridePiece(piece *piece.Piece) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	g.overridePiece = piece
+
+	if piece != nil {
+		g.fallingPiece.SetPiece(piece, g.field.GetCenterX(), 0, 0)
+		g.nextPiece.SetPiece(piece)
+	} else {
+		g.nextPiece.SetPiece(g.pieceGenerator.NextElement())
+	}
+}
+
 func (g *Game) init(seed int64) {
-	g.rpg = rng.NewPiece(seed)
+	g.pieceGenerator = piece.NewGenerator(seed)
 
 	g.fallingPiece = nil
 	g.nextPiece = nil
@@ -152,7 +173,7 @@ func (g *Game) init(seed int64) {
 	g.field.Reset()
 	g.score.Reset()
 
-	g.rpg.NextBag()
+	g.pieceGenerator.NextBag()
 
 	g.lastActivity = time.Now()
 }

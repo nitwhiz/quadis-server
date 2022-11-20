@@ -4,6 +4,7 @@ import (
 	"github.com/nitwhiz/quadis-server/pkg/event"
 	"github.com/nitwhiz/quadis-server/pkg/game"
 	"github.com/nitwhiz/quadis-server/pkg/item"
+	"github.com/nitwhiz/quadis-server/pkg/rng"
 	"log"
 	"sync"
 	"time"
@@ -14,20 +15,24 @@ type ItemPayload struct {
 }
 
 type ItemDistribution struct {
-	room      *Room
-	mu        *sync.RWMutex
-	gameItems map[string]*item.Item
+	room          *Room
+	mu            *sync.RWMutex
+	gameItems     map[string]*item.Item
+	itemGenerator *item.Generator
+	random        *rng.Basic
 }
 
-func (r *Room) StartItemDistribution() {
+func (r *Room) StartItemDistribution(seed int64) {
 	if r.itemDistribution != nil {
 		log.Fatalln("trying to init another item distribution")
 	}
 
 	id := ItemDistribution{
-		room:      r,
-		mu:        &sync.RWMutex{},
-		gameItems: map[string]*item.Item{},
+		room:          r,
+		mu:            &sync.RWMutex{},
+		gameItems:     map[string]*item.Item{},
+		itemGenerator: item.NewGenerator(seed),
+		random:        rng.NewBasic(seed),
 	}
 
 	go id.startDistribution()
@@ -43,9 +48,10 @@ func (i *ItemDistribution) ActivateItem(sourceGame *game.Game) {
 
 	log.Printf("item activated by %s!\n", gameId)
 
-	if gameItem, ok := i.gameItems[gameId]; ok {
+	if gameItem, ok := i.gameItems[gameId]; ok && gameItem != nil {
 		go gameItem.Activate(sourceGame, i.room)
-		delete(i.gameItems, gameId)
+
+		i.gameItems[gameId] = nil
 
 		i.room.bus.Publish(&event.Event{
 			Type:   event.TypeItemUpdate,
@@ -65,10 +71,12 @@ func (i *ItemDistribution) randomize() {
 	defer i.room.gamesMutex.RUnlock()
 
 	for gId := range i.room.games {
-		if _, ok := i.gameItems[gId]; !ok {
-			newItem := item.NewTornado()
+		if gItem, ok := i.gameItems[gId]; !ok || gItem == nil {
+			newItem := i.itemGenerator.NextElement()
 
-			i.gameItems[gId] = newItem
+			if i.random.Probably(.75) {
+				i.gameItems[gId] = newItem
+			}
 
 			i.room.bus.Publish(&event.Event{
 				Type:   event.TypeItemUpdate,
