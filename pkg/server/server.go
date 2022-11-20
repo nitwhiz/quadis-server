@@ -5,7 +5,9 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"github.com/nitwhiz/quadis-server/pkg/prom"
 	"github.com/nitwhiz/quadis-server/pkg/room"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"io"
 	"net/http"
 	"sync"
@@ -37,18 +39,22 @@ func (s *Server) createRoom() *room.Room {
 
 	s.rooms[r.GetId()] = r
 
+	prom.RoomsTotal.Set(float64(len(s.rooms)))
+
 	return r
 }
 
 func (s *Server) removeRoom(r *room.Room) {
+	rId := r.GetId()
+
 	s.roomsMutex.Lock()
 	defer s.roomsMutex.Unlock()
-
-	rId := r.GetId()
 
 	if _, ok := s.rooms[rId]; ok {
 		delete(s.rooms, rId)
 	}
+
+	prom.RoomsTotal.Set(float64(len(s.rooms)))
 }
 
 func (s *Server) getRoom(id string) *room.Room {
@@ -155,6 +161,8 @@ func (s *Server) Start() error {
 			go s.WaitForRoomShutdown(r)
 		}
 	})
+
+	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	if gin.IsDebugging() {
 		r.POST("/rooms/:roomId/console", func(c *gin.Context) {

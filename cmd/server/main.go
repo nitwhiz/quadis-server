@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/nitwhiz/quadis-server/internal/server"
+	"github.com/nitwhiz/quadis-server/pkg/server"
 	"log"
 )
 
