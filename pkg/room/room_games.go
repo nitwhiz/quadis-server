@@ -71,6 +71,7 @@ func (r *Room) CreateGame(ws *websocket.Conn) error {
 		ActivateItemCallback: func(g *game.Game) {
 			r.itemDistribution.ActivateItem(g)
 		},
+		Seed: r.randomSeed.NextInt64(),
 	}
 
 	if r.rules.BedrockEnabled {
@@ -107,6 +108,19 @@ func (r *Room) CreateGame(ws *websocket.Conn) error {
 
 	if err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func (r *Room) GetHostGame() *game.Game {
+	r.gamesMutex.RLock()
+	defer r.gamesMutex.RUnlock()
+
+	for _, g := range r.games {
+		if g.IsHost() {
+			return g
+		}
 	}
 
 	return nil

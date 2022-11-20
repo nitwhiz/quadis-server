@@ -44,7 +44,7 @@ func (i *ItemDistribution) ActivateItem(sourceGame *game.Game) {
 	log.Printf("item activated by %s!\n", gameId)
 
 	if gameItem, ok := i.gameItems[gameId]; ok {
-		gameItem.Activate(sourceGame, i.room)
+		go gameItem.Activate(sourceGame, i.room)
 		delete(i.gameItems, gameId)
 
 		i.room.bus.Publish(&event.Event{

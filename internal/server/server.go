@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/nitwhiz/quadis-server/pkg/room"
+	"io"
 	"net/http"
 	"sync"
 )
@@ -154,6 +155,24 @@ func (s *Server) Start() error {
 			go s.WaitForRoomShutdown(r)
 		}
 	})
+
+	if gin.IsDebugging() {
+		r.POST("/rooms/:roomId/console", func(c *gin.Context) {
+			roomId := c.Param("roomId")
+
+			if r := s.getRoom(roomId); r != nil {
+				requestBody, err := io.ReadAll(c.Request.Body)
+
+				if err != nil {
+					c.AbortWithStatus(http.StatusBadRequest)
+				} else {
+					if err := s.handleRoomConsoleCommand(r, requestBody); err != nil {
+						c.AbortWithStatus(http.StatusBadRequest)
+					}
+				}
+			}
+		})
+	}
 
 	return r.Run("0.0.0.0:7000")
 }

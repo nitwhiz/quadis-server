@@ -24,6 +24,8 @@ const TokenZ = Token(7)
 
 const TokenBedrock = Token(8)
 
+const MaxToken = TokenBedrock
+
 type Piece struct {
 	Token        Token
 	rotatedFaces *[]Body
