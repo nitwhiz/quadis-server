@@ -2,7 +2,6 @@ package game
 
 import (
 	"github.com/nitwhiz/quadis-server/pkg/falling_piece"
-	"github.com/nitwhiz/quadis-server/pkg/field"
 	"github.com/nitwhiz/quadis-server/pkg/piece"
 )
 
@@ -25,7 +24,7 @@ func (g *Game) hardLockFallingPiece() {
 
 	p, pRot, pX, pY := g.fallingPiece.GetPieceAndPosition()
 
-	for dy < field.Height {
+	for dy < g.GetField().GetHeight() {
 		if !g.field.CanPutPiece(p, pRot, pX, pY+dy) {
 			break
 		}

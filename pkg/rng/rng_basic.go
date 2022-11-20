@@ -23,3 +23,12 @@ func (r *Basic) NextInt64() int64 {
 func (r *Basic) Probably(probability float64) bool {
 	return r.NextFloat64() < probability
 }
+
+func (r *Basic) Shuffle(n int, swap func(i int, j int)) {
+	i := n
+
+	for ; i > 0; i-- {
+		j := r.rand.Intn(i)
+		swap(i, j)
+	}
+}

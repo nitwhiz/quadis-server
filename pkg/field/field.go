@@ -3,30 +3,41 @@ package field
 import (
 	"github.com/nitwhiz/quadis-server/pkg/dirty"
 	"github.com/nitwhiz/quadis-server/pkg/piece"
+	"github.com/nitwhiz/quadis-server/pkg/rng"
 	"sync"
 )
 
-const Width = 10
-const Height = 20
+type Settings struct {
+	Seed   int64
+	Width  int
+	Height int
+}
 
 type Field struct {
-	data           []piece.Token
-	centerX        int
+	data    []piece.Token
+	centerX int
+	// todo: this is more or less a second source of truth
 	currentBedrock int
 	Dirty          *dirty.Dirtiness
 	mu             *sync.RWMutex
+	random         *rng.Basic
+	width          int
+	height         int
 }
 
 type Payload struct {
 	Data piece.Tokens `json:"data"`
 }
 
-func New() *Field {
+func New(settings *Settings) *Field {
 	return &Field{
-		data:    make([]piece.Token, Width*Height),
-		centerX: Width/2 - piece.BodyWidth/2,
+		data:    make([]piece.Token, settings.Width*settings.Height),
+		centerX: settings.Width/2 - piece.BodyWidth/2,
 		Dirty:   dirty.New(),
 		mu:      &sync.RWMutex{},
+		random:  rng.NewBasic(settings.Seed),
+		width:   settings.Width,
+		height:  settings.Height,
 	}
 }
 
@@ -46,17 +57,24 @@ func (f *Field) GetCurrentBedrock() int {
 	return f.currentBedrock
 }
 
+func (f *Field) GetHeight() int {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+
+	return f.height
+}
+
 func (f *Field) Reset() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	f.data = make([]piece.Token, Width*Height)
+	f.data = make([]piece.Token, f.width*f.height)
 
 	f.Dirty.Trip()
 }
 
 func (f *Field) isInBounds(x int, y int) bool {
-	if x < 0 || x >= Width || y < 0 || y >= Height {
+	if x < 0 || x >= f.width || y < 0 || y >= f.height {
 		return false
 	}
 
@@ -69,13 +87,13 @@ func (f *Field) ClearLines() int {
 
 	cleared := 0
 
-	for y := 0; y < Height; y++ {
+	for y := 0; y < f.height; y++ {
 		isFull := true
 
-		for x := 0; x < Width; x++ {
+		for x := 0; x < f.width; x++ {
 			d := f.getDataXY(x, y)
 
-			if d == 0 || d == piece.TokenBedrock {
+			if d == piece.TokenNone || d == piece.TokenBedrock {
 				isFull = false
 				break
 			}
@@ -85,12 +103,12 @@ func (f *Field) ClearLines() int {
 			cleared++
 
 			for yi := y; yi > 0; yi-- {
-				for x := 0; x < Width; x++ {
+				for x := 0; x < f.width; x++ {
 					if yi == 0 {
-						f.setDataXY(x, yi, 0)
+						f.setDataXY(x, yi, 0, true)
+					} else {
+						f.setDataXY(x, yi, f.getDataXY(x, yi-1), true)
 					}
-
-					f.setDataXY(x, yi, f.getDataXY(x, yi-1))
 				}
 			}
 
@@ -105,8 +123,8 @@ func (f *Field) ClearLines() int {
 	return cleared
 }
 
-func (f *Field) shouldSetDataXY(i int, d piece.Token) bool {
-	if i < 0 && i >= Width*Height {
+func (f *Field) shouldSetDataAt(i int, d piece.Token) bool {
+	if i < 0 || i >= f.width*f.height {
 		return false
 	}
 
@@ -121,17 +139,23 @@ func (f *Field) shouldSetDataXY(i int, d piece.Token) bool {
 	return true
 }
 
-func (f *Field) setDataXY(x int, y int, d piece.Token) {
-	i := y*Width + x
-
-	if f.shouldSetDataXY(i, d) {
+func (f *Field) setDataAt(i int, d piece.Token, force bool) {
+	if force || f.shouldSetDataAt(i, d) {
 		f.data[i] = d
 		f.Dirty.Trip()
 	}
 }
 
+func (f *Field) setDataXY(x int, y int, d piece.Token, force bool) {
+	f.setDataAt(y*f.width+x, d, force)
+}
+
+func (f *Field) getDataAt(i int) piece.Token {
+	return f.data[i]
+}
+
 func (f *Field) getDataXY(x int, y int) piece.Token {
-	return f.data[y*Width+x]
+	return f.getDataAt(y*f.width + x)
 }
 
 func (f *Field) PutPiece(p *piece.Piece, r piece.Rotation, x int, y int) {
@@ -143,7 +167,7 @@ func (f *Field) PutPiece(p *piece.Piece, r piece.Rotation, x int, y int) {
 			d := p.GetDataXY(r, px, py)
 
 			if d != 0 {
-				f.setDataXY(x+px, y+py, d)
+				f.setDataXY(x+px, y+py, d, false)
 			}
 		}
 	}
@@ -172,12 +196,12 @@ func (f *Field) IncreaseBedrock(delta int) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	for y := 0; y < Height; y++ {
-		for x := 0; x < Width; x++ {
+	for y := 0; y < f.height; y++ {
+		for x := 0; x < f.width; x++ {
 			blockData := f.getDataXY(x, y)
 
 			if y != 0 && f.isInBounds(x, y-delta) {
-				f.setDataXY(x, y-delta, blockData)
+				f.setDataXY(x, y-delta, blockData, true)
 			}
 		}
 	}
@@ -185,8 +209,8 @@ func (f *Field) IncreaseBedrock(delta int) {
 	target := f.currentBedrock + delta
 
 	for y := f.currentBedrock; y < target; y++ {
-		for x := 0; x < Width; x++ {
-			f.setDataXY(x, Height-y-1, piece.TokenBedrock)
+		for x := 0; x < f.width; x++ {
+			f.setDataXY(x, f.height-y-1, piece.TokenBedrock, true)
 		}
 	}
 
@@ -197,12 +221,12 @@ func (f *Field) decreaseBedrock(delta int) {
 	target := f.currentBedrock - delta
 
 	for f.currentBedrock > 0 && f.currentBedrock > target {
-		for y := Height - 1; y >= 0; y-- {
-			for x := 0; x < Width; x++ {
+		for y := f.height - 1; y >= 0; y-- {
+			for x := 0; x < f.width; x++ {
 				blockData := f.getDataXY(x, y)
 
-				if y != Height-1 {
-					f.setDataXY(x, y+1, blockData)
+				if y != f.height-1 {
+					f.setDataXY(x, y+1, blockData, true)
 				}
 			}
 		}
@@ -216,4 +240,76 @@ func (f *Field) GetCenterX() int {
 	defer f.mu.RUnlock()
 
 	return f.centerX
+}
+
+func (f *Field) getBottomArea(startY int) []piece.Token {
+	res := make([]piece.Token, (f.height-startY)*f.width)
+
+	for fy := startY; fy < f.height; fy++ {
+		for fx := 0; fx < f.width; fx++ {
+			res[(fy-startY)*f.width+fx] = f.getDataXY(fx, fy)
+		}
+	}
+
+	return res
+}
+
+func (f *Field) putData(d []piece.Token) {
+	for fy := 0; fy < f.height; fy++ {
+		for fx := 0; fx < f.width; fx++ {
+			f.setDataXY(fx, fy, d[fy*f.width+fx], true)
+		}
+	}
+}
+
+func (f *Field) ShuffleTokens() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	areaStartY := f.height - 1
+
+	for y := f.height - 1; y >= 0; y-- {
+		tokenFound := false
+
+		for x := 0; x < f.width; x++ {
+			if f.getDataXY(x, y) != piece.TokenNone {
+				tokenFound = true
+				break
+			}
+		}
+
+		if !tokenFound {
+			break
+		}
+
+		areaStartY = y
+	}
+
+	if areaStartY == f.height-1 {
+		return
+	}
+
+	offset := areaStartY * f.width
+
+	// todo: this should not be in here
+
+	f.random.Shuffle(f.width*(f.height-areaStartY)-1, func(i int, j int) {
+		if !f.random.Probably(.2) {
+			return
+		}
+
+		oi := offset + i
+		oj := offset + j
+
+		yi := oi / f.width
+		yj := oj / f.width
+
+		if yi < f.height-f.currentBedrock && yj < f.height-f.currentBedrock {
+			tokI := f.getDataAt(oi)
+			tokJ := f.getDataAt(oj)
+
+			f.setDataAt(oi, tokJ, false)
+			f.setDataAt(oj, tokI, false)
+		}
+	})
 }

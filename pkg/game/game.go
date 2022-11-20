@@ -28,6 +28,8 @@ type Settings struct {
 	ParentContext        context.Context
 	OverCallback         OverCallback
 	ActivateItemCallback ActivateItemCallback
+	Seed                 int64
+	IsHost               bool
 }
 
 type Game struct {
@@ -51,6 +53,7 @@ type Game struct {
 	overCallback         OverCallback
 	activateItemCallback ActivateItemCallback
 	lastActivity         time.Time
+	host                 bool
 }
 
 type Payload struct {
@@ -59,7 +62,11 @@ type Payload struct {
 }
 
 func New(settings *Settings) *Game {
-	f := field.New()
+	f := field.New(&field.Settings{
+		Seed:   settings.Seed,
+		Width:  10,
+		Height: 20,
+	})
 	s := score.New()
 
 	ctx, cancel := context.WithCancel(settings.ParentContext)
@@ -85,12 +92,20 @@ func New(settings *Settings) *Game {
 		overCallback:         settings.OverCallback,
 		activateItemCallback: settings.ActivateItemCallback,
 		lastActivity:         time.Now(),
+		host:                 settings.IsHost,
 	}
 
 	go g.startCommandReader()
 	go g.startUpdater()
 
 	return &g
+}
+
+func (g *Game) IsHost() bool {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	return g.host
 }
 
 func (g *Game) activateItem() {

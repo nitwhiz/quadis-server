@@ -91,6 +91,24 @@ func (r *Room) ToPayload() *Payload {
 	}
 }
 
+func (r *Room) GetTargetGameId(gameId string) string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	return r.targets.GetTargetGameId(gameId)
+}
+
+func (r *Room) GetGame(id string) *game.Game {
+	r.gamesMutex.RLock()
+	defer r.gamesMutex.RUnlock()
+
+	if g, ok := r.games[id]; ok {
+		return g
+	}
+
+	return nil
+}
+
 func (r *Room) GetWaitGroup() *sync.WaitGroup {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
