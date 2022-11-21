@@ -4,6 +4,7 @@ import (
 	"github.com/nitwhiz/quadis-server/pkg/dirty"
 	"github.com/nitwhiz/quadis-server/pkg/piece"
 	"github.com/nitwhiz/quadis-server/pkg/rng"
+	"strings"
 	"sync"
 )
 
@@ -26,7 +27,7 @@ type Field struct {
 }
 
 type Payload struct {
-	Data piece.Tokens `json:"data"`
+	Data string `json:"data"`
 }
 
 func New(settings *Settings) *Field {
@@ -46,7 +47,7 @@ func (f *Field) ToPayload() *Payload {
 	defer f.mu.RUnlock()
 
 	return &Payload{
-		Data: f.data,
+		Data: strings.Join(f.Encode64(), " "),
 	}
 }
 

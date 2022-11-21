@@ -46,8 +46,6 @@ func (i *ItemDistribution) ActivateItem(sourceGame *game.Game) {
 
 	gameId := sourceGame.GetId()
 
-	log.Printf("item activated by %s!\n", gameId)
-
 	if gameItem, ok := i.gameItems[gameId]; ok && gameItem != nil {
 		go gameItem.Activate(sourceGame, i.room)
 

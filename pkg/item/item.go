@@ -24,7 +24,7 @@ type Item struct {
 }
 
 var All = []*Item{
-	//NewTornado(),
-	//NewOnlyIPieces(),
+	NewTornado(),
+	NewOnlyIPieces(),
 	NewLockRotation(),
 }
