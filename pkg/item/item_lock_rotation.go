@@ -13,11 +13,29 @@ func NewLockRotation() *Item {
 				return
 			}
 
-			sourceGame.GetFallingPiece().SetRotationLocked(true)
+			targetId := room.GetTargetGameId(sourceGame.GetId())
+
+			if targetId == "" {
+				return
+			}
+
+			room.UpdateItemAffection(targetId, TypeLockRotation)
+
+			targetGame := room.GetGame(targetId)
+
+			if targetGame == nil || targetGame.IsOver() {
+				return
+			}
+
+			fp := targetGame.GetFallingPiece()
+
+			fp.SetRotationLocked(true)
 
 			<-time.After(time.Second * 5)
 
-			sourceGame.GetFallingPiece().SetRotationLocked(false)
+			fp.SetRotationLocked(false)
+
+			room.UpdateItemAffection(targetId, TypeNone)
 		},
 	}
 }

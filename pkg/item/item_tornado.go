@@ -2,7 +2,6 @@ package item
 
 import (
 	"github.com/nitwhiz/quadis-server/pkg/game"
-	"log"
 )
 
 func NewTornado() *Item {
@@ -19,6 +18,8 @@ func NewTornado() *Item {
 				return
 			}
 
+			room.UpdateItemAffection(sourceGame.GetId(), TypeTornado)
+
 			targetGame := room.GetGame(targetId)
 
 			if targetGame == nil || targetGame.IsOver() {
@@ -27,7 +28,7 @@ func NewTornado() *Item {
 
 			targetGame.GetField().ShuffleTokens()
 
-			log.Println("tornado applied!")
+			room.UpdateItemAffection(sourceGame.GetId(), TypeNone)
 		},
 	}
 }

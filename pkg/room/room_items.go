@@ -40,6 +40,20 @@ func (r *Room) StartItemDistribution(seed int64) {
 	r.itemDistribution = &id
 }
 
+func (r *Room) UpdateItemAffection(gameId string, itemType string) {
+	r.itemDistribution.UpdateItemAffection(gameId, itemType)
+}
+
+func (i *ItemDistribution) UpdateItemAffection(gameId string, itemType string) {
+	i.room.bus.Publish(&event.Event{
+		Type:   event.TypeItemAffectionUpdate,
+		Origin: event.OriginGame(gameId),
+		Payload: &ItemPayload{
+			Type: &itemType,
+		},
+	})
+}
+
 func (i *ItemDistribution) ActivateItem(sourceGame *game.Game) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
@@ -74,15 +88,15 @@ func (i *ItemDistribution) randomize() {
 
 			if i.random.Probably(.75) {
 				i.gameItems[gId] = newItem
-			}
 
-			i.room.bus.Publish(&event.Event{
-				Type:   event.TypeItemUpdate,
-				Origin: event.OriginGame(gId),
-				Payload: &ItemPayload{
-					Type: &newItem.Type,
-				},
-			})
+				i.room.bus.Publish(&event.Event{
+					Type:   event.TypeItemUpdate,
+					Origin: event.OriginGame(gId),
+					Payload: &ItemPayload{
+						Type: &newItem.Type,
+					},
+				})
+			}
 		}
 	}
 }

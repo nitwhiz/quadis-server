@@ -14,11 +14,15 @@ func NewOnlyIPieces() *Item {
 				return
 			}
 
+			room.UpdateItemAffection(sourceGame.GetId(), TypeOnlyIPieces)
+
 			sourceGame.SetOverridePiece(&piece.I)
 
 			<-time.After(time.Second * 5)
 
 			sourceGame.SetOverridePiece(nil)
+
+			room.UpdateItemAffection(sourceGame.GetId(), TypeNone)
 		},
 	}
 }
