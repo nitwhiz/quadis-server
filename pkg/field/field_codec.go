@@ -33,7 +33,7 @@ func getCodec64() *Codec64 {
 func getBitCount(n uint64) int {
 	b := 1
 
-	for i := uint64(1); i < math.MaxInt64; i *= 2 {
+	for i := uint64(1); i < math.MaxUint64; i *= 2 {
 		if i >= n {
 			break
 		}
@@ -45,13 +45,7 @@ func getBitCount(n uint64) int {
 }
 
 func getMask(b int) uint64 {
-	m := uint64(0)
-
-	for i := 0; i < b; i++ {
-		m |= 1 << i
-	}
-
-	return m
+	return (1 << b) - 1
 }
 
 func (f *Field) Encode64() []string {
