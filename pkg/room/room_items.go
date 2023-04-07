@@ -4,6 +4,7 @@ import (
 	"github.com/nitwhiz/quadis-server/pkg/event"
 	"github.com/nitwhiz/quadis-server/pkg/game"
 	"github.com/nitwhiz/quadis-server/pkg/item"
+	"github.com/nitwhiz/quadis-server/pkg/metrics"
 	"github.com/nitwhiz/quadis-server/pkg/rng"
 	"log"
 	"sync"
@@ -62,6 +63,8 @@ func (i *ItemDistribution) ActivateItem(sourceGame *game.Game) {
 
 	if gameItem, ok := i.gameItems[gameId]; ok && gameItem != nil {
 		go gameItem.Activate(sourceGame, i.room)
+
+		metrics.IncreaseItemActivationsTotal(gameItem.Type)
 
 		i.gameItems[gameId] = nil
 

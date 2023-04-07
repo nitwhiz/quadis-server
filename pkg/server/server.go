@@ -5,12 +5,13 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
-	"github.com/nitwhiz/quadis-server/pkg/prom"
+	"github.com/nitwhiz/quadis-server/pkg/metrics"
 	"github.com/nitwhiz/quadis-server/pkg/room"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"io"
 	"net/http"
 	"sync"
+	"time"
 )
 
 var upgrader = websocket.Upgrader{
@@ -39,8 +40,6 @@ func (s *Server) createRoom() *room.Room {
 
 	s.rooms[r.GetId()] = r
 
-	prom.RoomsTotal.Set(float64(len(s.rooms)))
-
 	return r
 }
 
@@ -53,8 +52,6 @@ func (s *Server) removeRoom(r *room.Room) {
 	if _, ok := s.rooms[rId]; ok {
 		delete(s.rooms, rId)
 	}
-
-	prom.RoomsTotal.Set(float64(len(s.rooms)))
 }
 
 func (s *Server) getRoom(id string) *room.Room {
@@ -88,6 +85,31 @@ func (s *Server) connect(roomId string, resp http.ResponseWriter, req *http.Requ
 func (s *Server) WaitForRoomShutdown(r *room.Room) {
 	<-r.ShutdownDone()
 	s.removeRoom(r)
+}
+
+func (s *Server) StartMetricsCollector() {
+	go func() {
+		for {
+			s.roomsMutex.Lock()
+
+			metrics.RoomsTotal.Set(float64(len(s.rooms)))
+
+			gamesTotal := 0
+			runningGamesTotal := 0
+
+			for _, r := range s.rooms {
+				gamesTotal += r.GetGamesCount()
+				runningGamesTotal += r.GetRunningGamesCount()
+			}
+
+			s.roomsMutex.Unlock()
+
+			metrics.GamesTotal.Set(float64(gamesTotal))
+			metrics.GamesRunningTotal.Set(float64(runningGamesTotal))
+
+			time.Sleep(time.Second * 5)
+		}
+	}()
 }
 
 func (s *Server) Start() error {
@@ -181,6 +203,8 @@ func (s *Server) Start() error {
 			}
 		})
 	}
+
+	s.StartMetricsCollector()
 
 	return r.Run("0.0.0.0:7000")
 }

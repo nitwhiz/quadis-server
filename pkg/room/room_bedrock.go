@@ -2,6 +2,7 @@ package room
 
 import (
 	"github.com/nitwhiz/quadis-server/pkg/game"
+	"github.com/nitwhiz/quadis-server/pkg/metrics"
 	"log"
 	"time"
 )
@@ -44,6 +45,8 @@ func (d *BedrockDistribution) startDistribution() {
 
 				if targetGame, ok := d.room.games[targetGameId]; ok {
 					targetGame.AddBedrock(b.Amount)
+
+					metrics.BedrockSentTotal.Add(float64(b.Amount))
 				}
 
 				d.room.gamesMutex.RUnlock()

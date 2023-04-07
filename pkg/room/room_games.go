@@ -7,7 +7,6 @@ import (
 	"github.com/nitwhiz/quadis-server/pkg/event"
 	"github.com/nitwhiz/quadis-server/pkg/game"
 	"github.com/nitwhiz/quadis-server/pkg/player"
-	"github.com/nitwhiz/quadis-server/pkg/prom"
 )
 
 func (r *Room) RemoveGame(id string) {
@@ -18,8 +17,6 @@ func (r *Room) RemoveGame(id string) {
 
 		g.ToggleOver(true)
 		delete(r.games, id)
-
-		prom.TotalGames.Sub(1)
 
 		r.bus.Publish(&event.Event{
 			Type:    event.TypeLeave,
@@ -92,8 +89,6 @@ func (r *Room) CreateGame(ws *websocket.Conn) error {
 
 	r.games[gameId] = g
 
-	prom.TotalGames.Add(1)
-
 	r.gamesMutex.Unlock()
 
 	// todo: move isHost into player struct; promote new host if host leaves the game
@@ -144,4 +139,11 @@ func (r *Room) GetRunningGamesCount() int {
 	}
 
 	return runningCount
+}
+
+func (r *Room) GetGamesCount() int {
+	r.gamesMutex.RLock()
+	defer r.gamesMutex.RUnlock()
+
+	return len(r.games)
 }

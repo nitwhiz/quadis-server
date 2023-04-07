@@ -2,6 +2,7 @@ package game
 
 import (
 	"github.com/nitwhiz/quadis-server/pkg/falling_piece"
+	"github.com/nitwhiz/quadis-server/pkg/metrics"
 	"github.com/nitwhiz/quadis-server/pkg/piece"
 )
 
@@ -37,6 +38,12 @@ func (g *Game) hardLockFallingPiece() {
 
 	g.fallingPiece.SetY(pY + dy - 1)
 	g.fallingPiece.Lock()
+
+	fP := g.fallingPiece.GetPiece()
+
+	if fP != nil {
+		metrics.IncreaseHardLocksTotal(p.Token)
+	}
 }
 
 func (g *Game) nextFallingPiece(lastPieceWasHeld bool) {
@@ -79,6 +86,12 @@ func (g *Game) tryTranslateFallingPiece(dr piece.Rotation, dx int, dy int) {
 
 	if g.field.CanPutPiece(p, tr, px+dx, py+dy) {
 		g.fallingPiece.SetPosition(tr, px+dx, py+dy)
+
+		fP := g.fallingPiece.GetPiece()
+
+		if fP != nil {
+			metrics.IncreasePieceMovementsTotal(g.fallingPiece.GetPiece().Token, dr, dx, dy)
+		}
 	}
 }
 

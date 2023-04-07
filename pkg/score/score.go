@@ -2,6 +2,7 @@ package score
 
 import (
 	"github.com/nitwhiz/quadis-server/pkg/dirty"
+	"github.com/nitwhiz/quadis-server/pkg/metrics"
 	"sync"
 )
 
@@ -46,6 +47,21 @@ func (s *Score) Reset() {
 	s.Dirty.Trip()
 }
 
+func getScoreByLineCount(l int) int {
+	switch l {
+	case 1:
+		return 60
+	case 2:
+		return 150
+	case 3:
+		return 420
+	case 4:
+		return 2500
+	default:
+		return 0
+	}
+}
+
 func (s *Score) AddLines(l int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -54,24 +70,13 @@ func (s *Score) AddLines(l int) {
 		return
 	}
 
-	switch l {
-	case 1:
-		s.score += 60
-		break
-	case 2:
-		s.score += 150
-		break
-	case 3:
-		s.score += 420
-		break
-	case 4:
-		s.score += 2500
-		break
-	default:
-		break
-	}
+	n := getScoreByLineCount(l)
 
+	s.score += n
 	s.lines += l
 
 	s.Dirty.Trip()
+
+	metrics.ScoreTotal.Add(float64(n))
+	metrics.LinesClearedTotal.Add(float64(l))
 }
