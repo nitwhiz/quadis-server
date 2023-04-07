@@ -20,6 +20,9 @@ func (g *Game) hardLockFallingPiece() {
 		return
 	}
 
+	g.fallingPiece.LockMovement()
+	defer g.fallingPiece.UnlockMovement()
+
 	dy := 0
 
 	p, pRot, pX, pY := g.fallingPiece.GetPieceAndPosition()
@@ -59,6 +62,9 @@ func (g *Game) nextFallingPiece(lastPieceWasHeld bool) {
 }
 
 func (g *Game) tryTranslateFallingPiece(dr piece.Rotation, dx int, dy int) {
+	g.fallingPiece.LockMovement()
+	defer g.fallingPiece.UnlockMovement()
+
 	if g.fallingPiece == nil || g.fallingPiece.IsLocked() {
 		return
 	}
@@ -92,12 +98,18 @@ func (g *Game) clearLinesAndNextPiece() (int, bool) {
 }
 
 func (g *Game) updateFallingPiece(delta int64) (int, bool) {
-	clearedLines := 0
-	gameOver := false
-
 	if g.fallingPiece == nil {
 		g.nextFallingPiece(false)
 	}
+
+	if !g.fallingPiece.TryLockMovement() {
+		return 0, false
+	}
+
+	defer g.fallingPiece.UnlockMovement()
+
+	clearedLines := 0
+	gameOver := false
 
 	p, pRot, pX, pY := g.fallingPiece.GetPieceAndPosition()
 
@@ -137,6 +149,9 @@ func (g *Game) updateFallingPiece(delta int64) (int, bool) {
 }
 
 func (g *Game) tryHoldFallingPiece() {
+	g.fallingPiece.LockMovement()
+	defer g.fallingPiece.UnlockMovement()
+
 	if g.fallingPiece == nil || g.holdingPiece.IsLocked() {
 		return
 	}

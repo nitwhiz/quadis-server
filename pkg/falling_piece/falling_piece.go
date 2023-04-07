@@ -7,16 +7,17 @@ import (
 )
 
 type FallingPiece struct {
-	piece          *piece.Piece
-	x              int
-	y              int
-	rotation       piece.Rotation
-	speed          int64
-	fallTimer      int64
-	locked         bool
-	rotationLocked bool
-	Dirty          *dirty.Dirtiness
-	mu             *sync.RWMutex
+	piece               *piece.Piece
+	x                   int
+	y                   int
+	rotation            piece.Rotation
+	speed               int64
+	fallTimer           int64
+	locked              bool
+	rotationLocked      bool
+	Dirty               *dirty.Dirtiness
+	mu                  *sync.RWMutex
+	collisionCheckMutex *sync.Mutex
 }
 
 type Payload struct {
@@ -29,16 +30,29 @@ type Payload struct {
 
 func New(piece *piece.Piece) *FallingPiece {
 	return &FallingPiece{
-		piece:     piece,
-		x:         0,
-		y:         0,
-		rotation:  0,
-		speed:     1,
-		fallTimer: 1000,
-		locked:    false,
-		Dirty:     dirty.New(),
-		mu:        &sync.RWMutex{},
+		piece:               piece,
+		x:                   0,
+		y:                   0,
+		rotation:            0,
+		speed:               1,
+		fallTimer:           1000,
+		locked:              false,
+		Dirty:               dirty.New(),
+		mu:                  &sync.RWMutex{},
+		collisionCheckMutex: &sync.Mutex{},
 	}
+}
+
+func (p *FallingPiece) LockMovement() {
+	p.collisionCheckMutex.Lock()
+}
+
+func (p *FallingPiece) TryLockMovement() bool {
+	return p.collisionCheckMutex.TryLock()
+}
+
+func (p *FallingPiece) UnlockMovement() {
+	p.collisionCheckMutex.Unlock()
 }
 
 func (p *FallingPiece) ToPayload() *Payload {

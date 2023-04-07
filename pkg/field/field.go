@@ -51,6 +51,14 @@ func (f *Field) ToPayload() *Payload {
 	}
 }
 
+func (f *Field) Lock() {
+	f.mu.Lock()
+}
+
+func (f *Field) Unlock() {
+	f.mu.Unlock()
+}
+
 func (f *Field) GetCurrentBedrock() int {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
