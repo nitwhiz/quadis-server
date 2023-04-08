@@ -1,4 +1,4 @@
-FROM golang:1.19.2-alpine3.16 as builder
+FROM golang:1.20.3-alpine3.17 as builder
 
 WORKDIR /app
 
@@ -6,7 +6,7 @@ COPY ./ /app
 
 RUN CGO_ENABLED=0 go build -tags release -o ./build/server ./cmd/server
 
-FROM alpine:3.16.2
+FROM alpine:3.17.3
 
 WORKDIR /app
 
